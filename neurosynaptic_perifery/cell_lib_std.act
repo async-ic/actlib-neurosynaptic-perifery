@@ -1,0 +1,454 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library
+ *
+ *  Copyright (c) 2020-2021 Rajit Manohar
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)  
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+namespace tmpl {
+  namespace neurosynaptic_perifery {
+
+
+    // We have to add a pretend buffer in here
+    // to ensure that act2v doesn't simplify things
+    // and just connect y to vss/vdd lol
+    export defproc TIELO_X1(bool! y; bool vdd, vss)
+    {
+      bool _y, a;
+      a = vss;
+      prs {
+        a => _y-
+        _y => y-
+      }
+
+    }
+
+    export defproc TIEHI_X1(bool! y; bool vdd, vss)
+    {
+      bool _y, a;
+      a = vdd;
+      prs {
+        a => _y-
+        _y => y-
+      }      
+    }
+
+    /*-- inverters --*/
+
+    defproc inv (bool! y; bool? a, vdd, vss)
+    {
+      prs {
+        a => y-
+      }
+    }
+      
+    template<pint nf>
+    defproc szinv <: inv()
+    {
+      [nf = 0 -> sizing { y {-1} }
+      [] else -> sizing { y {-2*nf,svt,nf} }
+      ]
+    }
+
+    export defcell INV_X1<: szinv<0>() { } 
+    export defcell INV_X2<: szinv<1>() { } 
+    export defcell INV_X4<: szinv<2>() { }
+    export defcell INV_X8<: szinv<4>() { }
+
+
+    /*--  signal buffers --*/
+
+    defproc buf (bool! y; bool? a, vdd, vss)
+    {
+      bool _y;
+      prs {
+        a => _y-
+      _y => y-
+      }
+    }
+    export defcell BUF_X1<: buf()
+    {
+      sizing { _y {-1}; y {-1} }
+    }
+    export defcell BUF_X2<: buf()
+    {
+      sizing { _y {-1}; y {-2} }
+    }
+    export defcell BUF_X3<: buf()
+    {
+      sizing { _y {-1.5}; y {-3} }
+    }
+    export defcell BUF_X4<: buf()
+    {
+      sizing { _y {-1.5}; y {-4,2} }
+    }
+        export defcell BUF_X6<: buf()
+    {
+      sizing { _y {-3}; y {-6,2} }
+    }
+        export defcell BUF_X8<: buf()
+    {
+      sizing { _y {-4,2}; y {-8,4} }
+    }
+    export defcell BUF_X12<: buf()
+    {
+      sizing { _y {-6,2}; y {-12,4} }
+    }
+    export defcell BUF_X16<: buf()
+    {
+      sizing { _y {-6,2}; y {-16,4} }
+    }
+    export defcell BUF_X24<: buf()
+    {
+      sizing { _y {-8,2}; y {-24,6} }
+    }
+    export defcell BUF_X32<: buf()
+    {
+      sizing { _y {-8,2}; y {-32,8} }
+    }
+
+    /*-- delay cells --*/
+    // TODO properly
+
+    // export defcell DLY4_X1(bool! y; bool? a, vdd, vss)
+    // {
+    //   bool _y, __y, ___y;
+    //   prs {
+    //     a => _y-
+    //     _y => __y-
+    //     __y => ___y-
+    //     ___y => y-
+    //   }
+    // }
+
+    export defcell DLY4_X1(bool! y; bool? a, vdd, vss)
+    {
+        BUF_X1 bufchain[16];
+        (i:0..14: bufchain[i].y = bufchain[i+1].a;)
+        bufchain[0].a = a;
+        bufchain[15].y = y;
+    }
+
+      
+    /*-- simple gates --*/
+      
+    export defcell NOR2_X1(bool! y; bool? a, b, vdd, vss)
+    {
+      prs {
+        a | b => y-
+      }
+      sizing { y {-1} }
+    }
+      
+    export defcell NOR3_X1(bool! y; bool? a, b, c, vdd, vss)
+    {
+      prs {
+        a | b | c => y-
+      }
+      sizing { y {-1} }
+    } 
+
+    export defcell NOR4_X1(bool! y; bool? a, b, c, d, vdd, vss)
+    {
+      prs {
+        a | b | c | d => y-
+      }
+      sizing { y {-1} }
+    }  
+
+
+    export defcell OR2_X1(bool! y; bool? a, b, vdd, vss)
+    {
+      bool _y;
+      prs {
+        a | b => _y-
+        _y => y-
+      }
+      sizing { _y{-1}; y{-1} }
+    }
+      
+    export defcell OR2_X2(bool! y; bool? a, b, vdd, vss)
+    {
+      bool _y;
+      prs {
+        a | b => _y-
+        _y => y-
+      }
+      sizing { _y{-1}; y{-2} }
+    }
+
+    export defcell OR3_X1(bool! y; bool? a, b, c, vdd, vss)
+    {
+      bool _y;
+      prs {
+        a | b | c => _y-
+        _y => y-
+      }
+      sizing { _y{-1}; y{-1} }
+    }
+
+    export defcell OR4_X1(bool! y; bool? a, b, c, d, vdd, vss)
+    {
+      bool _y;
+      prs {
+        a | b | c | d => _y-
+        _y => y-
+      }
+      sizing { _y{-1}; y{-1} }
+    }
+
+
+    export defcell NAND2_X1(bool! y; bool? a, b, vdd, vss)
+    {
+      prs {  
+        a & b => y-
+      }
+      sizing { y{-1} }
+    }
+      
+    export defcell NAND3_X1(bool! y; bool? a, b, c, vdd, vss)
+    {
+      prs {  
+        a & b & c => y-
+      }
+      sizing { y{-1} }
+    }
+
+    export defcell NAND4_X1(bool! y; bool? a, b, c, d, vdd, vss)
+    {
+      prs {  
+        a & b & c & d => y-
+      }
+      sizing { y{-1} }
+    }
+
+    export defcell AND2_X1(bool! y; bool? a, b, vdd, vss) 
+    {
+      bool _y;
+      prs {  
+        a & b => _y- 
+      _y => y-
+      }
+      sizing { _y{-1}; y{-1} }
+    } 
+
+    export defcell AND2_X2(bool! y; bool? a, b, vdd, vss) 
+    { 
+      bool _y;
+      prs {
+        a & b => _y-
+      _y => y-
+      }
+      sizing { _y{-1}; y{-2} }
+    }
+
+    export defcell AND3_X1(bool! y; bool? a, b, c, vdd, vss) 
+    {
+      bool _y;
+      prs {  
+        a & b & c => _y- 
+      _y => y-
+      }
+      sizing { _y{-1}; y{-1} }
+    } 
+
+    export defcell AND4_X1(bool! y; bool? a, b, c, d, vdd, vss) 
+    {
+      bool _y;
+      prs {  
+        a & b & c & d => _y- 
+      _y => y-
+      }
+      sizing { _y{-1}; y{-1} }
+    }
+
+    export defcell XOR2_X1(bool! y; bool? a, b, vdd, vss)
+    {
+      bool _a, _b;
+      prs {
+        a => _a-
+        b => _b-
+
+        [keeper=0] ~b & ~_a | ~_b & ~a -> y+
+        _b & _a | b & a -> y-
+      }
+      sizing { _a{-1}; _b{-1}; y{-1} }
+    }
+
+    export defcell XNOR2_X1(bool! y; bool? a, b, vdd, vss)
+    {
+      bool _a, _b;
+      prs {
+        a => _a-
+        b => _b-
+
+        [keeper=0] ~b & ~a | ~_b & ~_a -> y+
+        b & _a | _b & a -> y-
+      }
+      sizing { _a{-1}; _b{-1}; y{-1} }
+    }
+
+    export defcell MUX2_X1(bool! y; bool? a, b, s, vdd, vss)
+    {
+      // y = !( S ? b : a )
+      // Actually looks more like
+      // if s = 0 -> use A
+      // Adjusted to fit the XFAB Muxes
+      bool _s;
+      bool _y;
+      prs {
+        s => _s-
+
+        [keeper=0] ~a & ~s | ~b & ~_s -> _y+
+        a & _s | b & s -> _y-
+        _y => y-
+      }
+      sizing { _s{-1}; y{-1}; _y{-1}}
+    }
+
+    export defcell MUX4_X1(bool! y; bool? a, b, c, d, s0, s1, vdd, vss)
+    {
+      // y = !( S ? a : b )
+      bool _s0;
+      bool _s1;
+      bool _yab;
+      bool _ycd;
+
+      prs {
+        s0 => _s0-
+        s1 => _s1-
+
+        [keeper=0] a & _s0 | b & s0 -> _yab-
+        ~a & ~s0 | ~b & ~_s0 -> _yab+
+
+        [keeper=0] c & _s0 | d & s0 -> _ycd-
+        ~c & ~s0 | ~d & ~_s0 -> _ycd+
+
+        [keeper=0]_yab & _s1 | _ycd & s1 -> y-
+        ~_yab & ~s1 | ~_ycd & ~_s1 -> y+
+
+      }
+      sizing {_s0{-1}; _s1{-1}; y{-1}; _yab{-1}; _ycd{-1}}
+    }
+
+
+    export defcell OAI21_X1(bool! y; bool? a, b, c, vdd, vss)
+    {
+      prs {
+        (a | b) & c => y-  
+      }
+      sizing { y{-1} }
+    }
+
+    export defcell AOI21_X1(bool! y; bool? a, b, c, vdd, vss) 
+    { 
+      prs {
+        a & b | c => y-
+      }
+      sizing { y{-1} }
+    }
+
+    export defcell OAI22_X1(bool! y; bool? a, b, c, d, vdd, vss)
+    {
+      // y = !((a|b) & (c|d))
+      prs {
+        (a | b) & (c | d) => y-  
+      }
+      sizing { y{-1} }
+    }
+
+    export defcell AOI22_X1(bool! y; bool? a, b, c, d, vdd, vss) 
+    { 
+      prs {
+        a & b | c & d => y-
+      }
+      sizing { y{-1} }
+    }
+
+
+    /*--- buffered transmission gates ---*/
+      
+    export defcell TBUF1_X1 (bool! y; bool? a, en, vdd, vss)
+    {
+      bool _en;
+      prs {
+        en => _en-
+
+      ~a & ~_en -> y-
+        a & en -> y+
+      }
+      sizing { _en{-1}; y{-1} }
+    }
+    
+    export defcell TBUF_X2 (bool! y; bool? a, en, vdd, vss)
+    {
+      bool _en;
+      prs {
+        en => _en-
+
+      ~a & ~_en -> y-
+        a & en -> y+
+      }
+      sizing { _en{-2}; y{-2,2} }
+    }
+
+    export defcell TBUF_X4 (bool! y; bool? a, en, vdd, vss)
+    {
+      bool _en;
+      prs {
+        en => _en-
+
+      ~a & ~_en -> y-
+        a & en -> y+
+      }
+      sizing { _en{-4}; y{-4,4} }
+    }
+
+    export defproc DFFQ_R_X1 (bool? clk_B, reset_B, d; bool! q,q_B; bool? vdd,vss)
+    {
+      bool _clk_B, __clk_B, _mqi,_mqib,_sqi,_sqib;
+      prs {
+
+        // Creating delayed versions of the clock
+        clk_B => _clk_B-
+        _clk_B => __clk_B-
+
+        (~d & ~_clk_B)|(~reset_B)|(~__clk_B&~_mqi) -> _mqib+
+        ((d & __clk_B)|(_mqi & _clk_B))&reset_B -> _mqib-
+
+        _mqib => _mqi-
+
+        (~_mqi &~__clk_B)|(~reset_B)|(~_sqi&~_clk_B) -> _sqib+
+        ((_mqi &_clk_B)|(_sqi&__clk_B))&reset_B -> _sqib-
+
+        _sqib => _sqi-
+        _sqib => q-
+
+        q => q_B-
+
+
+      }
+    } 
+  }
+}
+
+

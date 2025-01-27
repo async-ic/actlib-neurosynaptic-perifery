@@ -1,0 +1,66 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library.
+ * It's the testing facility for cell_lib_std.act
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)  
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+import "../../neurosynaptic_perifery/cell_lib_std.act";
+
+open tmpl::neurosynaptic_perifery;
+
+// open actlib_neurosynaptic_perifery::neurosynaptic_perifery;
+
+// namespace tmpl {
+//     namespace neurosynaptic_perifery {
+
+
+TIELO_X1 cell1;
+TIEHI_X1 cell2;
+INV_X1 cell4;
+INV_X2 cell5;
+INV_X4 cell6;
+INV_X8 cell7;
+// CLKBUF1 cell8;
+// CLKBUF2 cell9;
+// CLKBUF3 cell10;
+NOR2_X1 cell11;
+NOR3_X1 cell12;
+OR2_X1 cell13;
+OR2_X2 cell14;
+NAND2_X1 cell15;
+NAND3_X1 cell16;
+AND2_X1 cell17;
+AND2_X2 cell18;
+XOR2_X1 cell19;
+XNOR2_X1 cell20;
+MUX2_X1 cell25;
+OAI21_X1 cell26;
+AOI21_X1 cell27;
+OAI22_X1 cell28;
+AOI22_X1 cell29;
+TBUF1_X1 cell30;
+TBUF_X2 cell31;
+
+// }}

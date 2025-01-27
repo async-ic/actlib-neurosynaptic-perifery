@@ -1,0 +1,66 @@
+watchall
+
+set-qdi-channel-neutral "b.in" 5
+set b.out.a 0
+set b.out.v 0
+# set b.in.a 1
+# set b.in.v 1
+set Reset 0
+
+# Set output channel variables to all active (incorrect)
+set b.out.d.d[0].t 1
+set b.out.d.d[0].f 1
+set b.out.d.d[1].t 1
+set b.out.d.d[1].f 1
+set b.out.d.d[2].t 1
+set b.out.d.d[2].f 1
+set b.out.d.d[3].t 1
+set b.out.d.d[3].f 1
+set b.out.d.d[4].t 1
+set b.out.d.d[4].f 1
+
+cycle
+
+system "echo '[] set Reset 1'"
+set Reset 1
+cycle
+
+system "echo '[] set Reset 0'"
+set Reset 0
+mode run
+cycle
+
+assert-qdi-channel-neutral "b.out" 5
+
+system "echo '[] Reset finished, setting some inputs.'"
+status X
+
+
+set b.in.d.d[0].t 1
+set b.in.d.d[1].t 1
+set b.in.d.d[2].f 1
+set b.in.d.d[3].f 1
+
+cycle
+
+system "echo '[] Setting final input'"
+
+set b.in.d.d[4].t 1
+cycle
+
+system "echo '[] Receiving out val'"
+
+set b.out.v 1
+cycle
+
+assert b.in.a 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 5
+cycle
+
+system "echo '[] Receiving out ack'"
+set b.out.a 1
+cycle
+
+assert-qdi-channel-neutral "b.out" 5

@@ -1,0 +1,150 @@
+watchall
+
+set-qdi-channel-neutral "b.in" 8
+cycle
+
+
+mode run
+system "echo '[] Set reset 0'"
+status X
+set Reset 0
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] Sending packet write 0s to reg0'"
+set-qdi-channel-valid "b.in" 8 256
+cycle
+assert b.in.a 1
+assert b.in.v 1
+assert-var-int "b.data[0]" 5 0
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+assert-var-int "b.data[0]" 5 0
+
+system "echo '[] Sending packet write 0s to reg0'"
+set-qdi-channel-valid "b.in" 8 256
+cycle
+assert b.in.a 1
+assert b.in.v 1
+assert-var-int "b.data[0]" 5 0
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+assert-var-int "b.data[0]" 5 0
+
+system "echo '[] Sending packet write 01100 to reg0'"
+set-qdi-channel-valid "b.in" 8 352
+cycle
+assert b.in.a 1
+assert b.in.v 1
+assert-var-int "b.data[0]" 5 12
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+assert-var-int "b.data[0]" 5 12
+
+
+system "echo '[] Sending packet write 0s to reg1'"
+set-qdi-channel-valid "b.in" 8 257
+cycle
+assert b.in.a 1
+assert b.in.v 1
+assert-var-int "b.data[1]" 5 0
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] Sending packet write 0s to reg2'"
+set-qdi-channel-valid "b.in" 8 258
+cycle
+assert b.in.a 1
+assert b.in.v 1
+assert-var-int "b.data[2]" 5 0
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+assert-var-int "b.data[2]" 5 0
+
+system "echo '[] Sending packet write 0s to reg3'"
+set-qdi-channel-valid "b.in" 8 259
+cycle
+assert b.in.a 1
+assert b.in.v 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] Sending packet write 0s to reg4'"
+set-qdi-channel-valid "b.in" 8 260
+cycle
+assert b.in.a 1
+assert b.in.v 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] Sending packet write 0s to reg5'"
+set-qdi-channel-valid "b.in" 8 261
+cycle
+assert b.in.a 1
+assert b.in.v 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] Sending packet write 0s to reg6'"
+set-qdi-channel-valid "b.in" 8 262
+cycle
+assert b.in.a 1
+assert b.in.v 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] Sending packet write 0s to reg7'"
+set-qdi-channel-valid "b.in" 8 263
+cycle
+assert b.in.a 1
+assert b.in.v 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+assert-var-int "b.data[2]" 5 0
+assert-var-int "b.data[3]" 5 0
+assert-var-int "b.data[4]" 5 0
+assert-var-int "b.data[5]" 5 0
+assert-var-int "b.data[6]" 5 0
+assert-var-int "b.data[7]" 5 0

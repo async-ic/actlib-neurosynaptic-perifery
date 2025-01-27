@@ -1,0 +1,12 @@
+
+system "echo '0'"
+
+set t.in 0
+
+system "echo '1'"
+
+cycle
+mode run
+assert t.out 0
+
+

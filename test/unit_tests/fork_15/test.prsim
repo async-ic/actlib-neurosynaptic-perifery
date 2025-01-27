@@ -1,0 +1,35 @@
+watchall
+set-qdi-channel-neutral "my_fork.in" 15
+set my_fork.out1.a 0
+set my_fork.out1.v 0
+set my_fork.out2.a 0
+set my_fork.out2.v 0
+cycle
+system "echo 'System initialized'"
+
+set Reset 0
+cycle
+system "echo 'System reset completed'"
+status X
+mode run
+
+assert-qdi-channel-neutral "my_fork.out1" 15
+assert-qdi-channel-neutral "my_fork.out2" 15
+cycle
+system "echo 'Output neutral checked'"
+
+set-qdi-channel-valid "my_fork.in" 15 5
+cycle
+assert my_fork.in.v 1
+assert my_fork.in.a 0
+assert-qdi-channel-valid "my_fork.out1" 15 5
+assert-qdi-channel-valid "my_fork.out2" 15 5
+set my_fork.out1.v 1
+set my_fork.out2.v 1
+cycle
+assert my_fork.in.a 1
+set-qdi-channel-neutral "my_fork.in" 15
+cycle
+set my_fork.out1.a 1
+set my_fork.out1.a 1
+system "echo 'Finished'"

@@ -1,0 +1,55 @@
+watchall
+system "echo '[] code starts'"
+set t.in.r 0
+set t.out.a 0
+cycle
+system "echo '[] set Reset(B) low'"
+set Reset 0
+cycle
+status X
+mode run
+system "echo '[] set Reset(B) high'"
+set Reset 1
+cycle
+system "echo '[0] reset done, r up'"
+set t.in.r 1
+cycle
+system "echo [0] r down"
+set t.in.r 0
+cycle
+system "echo '[1] r up'"
+set t.in.r 1
+cycle
+system "echo [1] r down"
+set t.in.r 0
+cycle
+system "echo '[2] r up'"
+set t.in.r 1
+cycle
+system "echo [2] r down"
+set t.in.r 0
+cycle
+system "echo '[3] r up'"
+set t.in.r 1
+cycle
+system "echo [3] r down"
+set t.in.r 0
+cycle
+system "echo '[4] r up'"
+set t.in.r 1
+cycle
+system "echo [4] r down"
+set t.in.r 0
+cycle
+system "echo '[5] r up'"
+set t.in.r 1
+cycle
+system "echo [5] r down"
+set t.in.r 0
+cycle
+system "echo '[6] r up'"
+set t.in.r 1
+cycle
+system "echo [6] r down"
+set t.in.r 0
+cycle

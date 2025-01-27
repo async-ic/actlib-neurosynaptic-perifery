@@ -1,0 +1,918 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ * 
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+import "../../neurosynaptic_perifery/cell_lib_async.act";
+import "../../neurosynaptic_perifery/cell_lib_std.act";
+import "../../neurosynaptic_perifery/treegates.act";
+// import tmpl::neurosynaptic_perifery;
+// import tmpl::neurosynaptic_perifery;
+import std::channel;
+open std::channel;
+
+// import std::func;
+
+
+namespace tmpl {
+    namespace neurosynaptic_perifery {
+
+        // @ole talk to rajit, we use valid the wrong way arround according to stdlib
+        template<pbool reset; pint V; pint M>
+        defchan gen_awMx1of2 <: chan(int<M>) (std::data::Mx1of2?!<M> d; bool!? a; bool!? v)
+        {
+          { 0 <= V & std::ceil_log2(V) < M : "Initial token value out of range" };
+          
+          methods {
+            /*-- initialize channel, sender end --*/
+            send_init {
+              [ reset -> (,i:M: [ ((V >> i) & 1) = 0 -> d.d[i].f+ [] else -> d.d[i].t+ ]);[v]
+              [] else -> (,i:M: d.d[i].t-,d.d[i].f-);[~v]
+              ]
+            }
+        
+            /*-- set output data --*/
+            set {
+              (,i:M: [((self >> i) & 1) = 0 -> d.d[i].f+ [] else -> d.d[i].t+ ]);[v]
+            }
+        
+            /*-- finish synchronization --*/
+            send_up {
+              [a]
+            }
+        
+            /*-- reset part of the protocol --*/
+            send_rest {
+              (,i:M: d.d[i].t-,d.d[i].f-);[~v],[~a]
+            }
+        
+            /*-- initialize channel, receiver end --*/
+            recv_init {
+              v-;a-
+            }
+        
+            /*-- get value --*/
+            get {
+              [(&i:M: d.d[i].t | d.d[i].f)];
+              self := 0;
+              (;i:M: [ d.d[i].t -> self := self | (1 << i)
+               [] else -> skip
+               ]
+              )
+            }
+        
+            /*-- finish synchronization action --*/
+            recv_up {
+              v+,a+
+            }
+        
+            /*-- reset part of the protocol --*/
+            recv_rest {
+              [(&i:M:~d.d[i].t & ~d.d[i].f)];v-,a-
+            }
+        
+            /*-- probe expression on receiver --*/
+            // i think this deadlocks with recv_up
+            recv_probe = v;
+        
+            // no sender probe
+          }
+        }
+        export defchan awMx1of2 <: gen_awMx1of2<false,0> () { }
+        export defchan awrMx1of2 <: gen_awMx1of2<true,0> () { }
+        
+
+        /**
+         * the buffer template gives you a standart buffer of bitwidth N
+         *
+         */
+        export template<pint N>
+        defproc buffer (awMx1of2<N> in; awMx1of2<N> out; bool? reset_B; power supply) {
+            //control
+            bool _en, _reset_BX,_reset_BXX[N*2];
+            A_3C_RB_X4 inack_ctl(.c1=_en,.c2=in.v,.c3=out.v,.y=in.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            A_1C1P_X1 en_ctl(.c1=in.a,.p1=out.v,.y=_en,.vdd=supply.vdd,.vss=supply.vss);
+
+
+            BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            sigbuf<N*2> reset_bufarray(.in=_reset_BX, .out=_reset_BXX);
+      
+            //validity
+            bool _in_v;
+            vtree<N> vc(.in=in.d,.out=_in_v,.supply=supply);
+            BUF_X4 in_v_buf(.a=_in_v, .y=in.v,.vdd=supply.vdd,.vss=supply.vss);
+            
+            //function
+            bool _out_a_BX[N*2],_out_a_B;
+            A_2C1N_RB_X4 f_buf_func[N];
+            A_2C1N_RB_X4 t_buf_func[N];
+            sigbuf<N*2> en_buf(.in=_en, .supply=supply);
+            INV_X1 out_a_inv(.a=out.a,.y=_out_a_B, .vss = supply.vss, .vdd = supply.vdd);
+            sigbuf<N*2> out_a_B_buf(.in=_out_a_B,.out=_out_a_BX, .supply = supply);
+            // check if you can also do single var to array connect a=b[N]
+            // and remove them from the loop
+            (i:N: 
+                f_buf_func[i].y=out.d.d[i].f;
+                t_buf_func[i].y=out.d.d[i].t;
+                f_buf_func[i].c1=en_buf.out[i];
+                t_buf_func[i].c1=en_buf.out[i+N];
+                f_buf_func[i].c2=_out_a_BX[i];
+                t_buf_func[i].c2=_out_a_BX[i+N];
+                f_buf_func[i].n1=in.d.d[i].f;
+                t_buf_func[i].n1=in.d.d[i].t;
+                f_buf_func[i].vdd=supply.vdd;
+                t_buf_func[i].vdd=supply.vdd;
+                f_buf_func[i].vss=supply.vss;
+                t_buf_func[i].vss=supply.vss;
+                t_buf_func[i].pr_B = _reset_BXX[i];
+                t_buf_func[i].sr_B = _reset_BXX[i];
+                f_buf_func[i].pr_B = _reset_BXX[i+N];
+                f_buf_func[i].sr_B = _reset_BXX[i+N];
+            )
+        }
+        // A template creating a FIFO of M buffers with N bits each
+        export template<pint N;pint M>
+        defproc fifo(awMx1of2<N> in; awMx1of2<N> out; bool? reset_B; power supply)
+        {
+          buffer<N> fifo_element[M];
+          bool _reset_BXX[M];
+          fifo_element[0].in = in ;
+          fifo_element[0].supply = supply;
+          fifo_element[0].reset_B = _reset_BXX[0];
+          (i:1..M-1:
+            fifo_element[i].in = fifo_element[i-1].out;
+            fifo_element[i].supply = supply;
+            fifo_element[i].reset_B = _reset_BXX[i];
+          )
+          fifo_element[M-1].out = out;
+
+          // reset buffers
+          bool _reset_BX;
+          BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+          sigbuf<M> reset_bufarray(.in=_reset_BX, .out=_reset_BXX,.supply = supply);
+        }
+
+        /**
+         * Buffer_S template.
+         * S maybe stands for special.
+         * Like a buffer, except that the output function block does not load the data in
+         * until the input data is valid.
+         * Not entirely sure what the point of it is, 
+         * Ole says is useful for funky timing scenarios.
+         */
+        export template<pint N>
+        defproc buffer_s (awMx1of2<N> in; awMx1of2<N> out; bool? reset_B; power supply) {
+            //control
+            bool _en, _reset_BX,_reset_BXX[N];
+            A_3C_RB_X4 inack_ctl(.c1=_en,.c2=in.v,.c3=out.v,.y=in.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            A_1C1P_X1 en_ctl(.c1=in.a,.p1=out.v,.y=_en,.vdd=supply.vdd,.vss=supply.vss);
+
+
+            BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            sigbuf<N> reset_bufarray(.in=_reset_BX, .out=_reset_BXX, .supply=supply);
+        
+            //validity
+            bool _in_v;
+            vtree<N> vc(.in=in.d,.out=_in_v,.supply=supply);
+            BUF_X4 in_v_buf4(.a=_in_v, .y=in.v,.vdd=supply.vdd,.vss=supply.vss);
+            sigbuf<N*2> in_v_bufN(.in = in.v, .supply = supply);
+
+            //function
+            bool _out_a_B;
+            A_2C2N_RB_X4 f_buf_func[N];
+            A_2C2N_RB_X4 t_buf_func[N];
+            sigbuf<N*2> en_buf(.in=_en, .supply=supply);
+            INV_X1 out_a_inv(.a=out.a,.y=_out_a_B, .vss = supply.vss, .vdd = supply.vdd);
+            sigbuf<N*2> out_a_B_buf(.in=_out_a_B, .supply=supply);
+            // check if you can also do single var to array connect a=b[N]
+            // and remove them from the loop
+            (i:N: 
+                f_buf_func[i].y=out.d.d[i].f;
+                t_buf_func[i].y=out.d.d[i].t;
+                f_buf_func[i].c1=en_buf.out[i];
+                t_buf_func[i].c1=en_buf.out[i+N];
+                f_buf_func[i].c2=out_a_B_buf.out[i];
+                t_buf_func[i].c2=out_a_B_buf.out[i+N];
+                f_buf_func[i].n1=in.d.d[i].f;
+                t_buf_func[i].n1=in.d.d[i].t;
+                f_buf_func[i].n2=in_v_bufN.out[i];
+                t_buf_func[i].n2=in_v_bufN.out[i+N];
+                f_buf_func[i].vdd=supply.vdd;
+                t_buf_func[i].vdd=supply.vdd;
+                f_buf_func[i].vss=supply.vss;
+                t_buf_func[i].vss=supply.vss;
+                t_buf_func[i].pr_B = _reset_BXX[i];
+                t_buf_func[i].sr_B = _reset_BXX[i];
+                f_buf_func[i].pr_B = _reset_BXX[i];
+                f_buf_func[i].sr_B = _reset_BXX[i];
+            )
+        }
+        
+        // Note that in token false/0 is send on out1, true/1 is send on out2.
+        // test
+        export template<pint N>
+        defproc demux (awMx1of2<N> in; awMx1of2<N> out1; awMx1of2<N> out2; bool? reset_B; awMx1of2<1> cond; power supply) {
+            //control
+            bool _en, _reset_BX,_reset_BXX[2*N], _out_v, _in_c_v_;
+            
+            OR2_X1 out_or(.a=out1.v, .b=out2.v, .y=_out_v,.vdd=supply.vdd,.vss=supply.vss);
+            A_3C_RB_X4 inack_ctl(.c1=_en,.c2=_in_c_v_,.c3=_out_v,.y=in.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            cond.a = in.a; // @TODO THIS SHOULD BE IMPROVED UPON IN FUTURE VERSIONS
+            // actually it might be fine 
+            cond.v = _in_c_v_;
+            A_1C1P_X1 en_ctl(.c1=in.a,.p1=_out_v,.y=_en,.vdd=supply.vdd,.vss=supply.vss);
+            BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            sigbuf<2*N> reset_bufarray(.in=_reset_BX, .out=_reset_BXX);
+            //validity
+            bool _in_v, _c_f_buf[N], _c_t_buf[N], _c_v;
+            
+            sigbuf<N> c_buf_t(.in=cond.d.d[0].t, .out=_c_t_buf, .supply=supply);
+            sigbuf<N> c_buf_f(.in=cond.d.d[0].f, .out=_c_f_buf, .supply=supply);
+            
+            OR2_X1 c_f_c_t_or(.a=cond.d.d[0].t, .b=cond.d.d[0].f, .y=_c_v,.vdd=supply.vdd,.vss=supply.vss);
+            vtree<N> vc(.in=in.d,.out=_in_v,.supply=supply);
+            
+            A_2C_B_X1 c_el(.c1=_c_v, .c2=_in_v, .y=_in_c_v_,.vdd=supply.vdd,.vss=supply.vss);
+            BUF_X4 in_v_buf(.a=_in_v, .y=in.v,.vdd=supply.vdd,.vss=supply.vss);
+            
+            
+            //function
+            //func buffer out1
+            bool _out1_a_B;
+            A_2C2N_RB_X4 out1_f_buf_func[N];
+            A_2C2N_RB_X4 out1_t_buf_func[N];
+            sigbuf<N*4> out_en_buf(.in=_en, .supply=supply);
+            INV_X1 out1_a_inv(.a=out1.a,.y=_out1_a_B, .vdd = supply.vdd, .vss = supply.vss);
+            sigbuf<N*2> out1_a_B_buf(.in=_out1_a_B, .supply=supply);
+            (i:N: 
+                out1_f_buf_func[i].y=out1.d.d[i].f;
+                out1_t_buf_func[i].y=out1.d.d[i].t;
+                out1_f_buf_func[i].c1=out_en_buf.out[i];
+                out1_t_buf_func[i].c1=out_en_buf.out[i+N];
+                out1_f_buf_func[i].c2=out1_a_B_buf.out[i];
+                out1_t_buf_func[i].c2=out1_a_B_buf.out[i+N];
+                out1_f_buf_func[i].n1=in.d.d[i].f;
+                out1_t_buf_func[i].n1=in.d.d[i].t;
+                out1_f_buf_func[i].vdd=supply.vdd;
+                out1_t_buf_func[i].vdd=supply.vdd;
+                out1_f_buf_func[i].vss=supply.vss;
+                out1_t_buf_func[i].vss=supply.vss;
+                out1_t_buf_func[i].pr_B = _reset_BXX[i];
+                out1_t_buf_func[i].sr_B = _reset_BXX[i];
+                out1_f_buf_func[i].pr_B = _reset_BXX[i];
+                out1_f_buf_func[i].sr_B = _reset_BXX[i];
+                out1_f_buf_func[i].n2=_c_f_buf[i];
+                out1_t_buf_func[i].n2=_c_f_buf[i];
+            )
+
+            //func buffer out2
+            bool _out2_a_B;
+            A_2C2N_RB_X4 out2_f_buf_func[N];
+            A_2C2N_RB_X4 out2_t_buf_func[N];
+            // sigbuf<N*2> out2_en_buf(.in=_en, .supply=supply);
+            INV_X1 out2_a_inv(.a=out2.a,.y=_out2_a_B, .vdd = supply.vdd, .vss = supply.vss);
+            sigbuf<N*2> out2_a_B_buf(.in=_out2_a_B);
+            (i:N: 
+                out2_f_buf_func[i].y=out2.d.d[i].f;
+                out2_t_buf_func[i].y=out2.d.d[i].t;
+                out2_f_buf_func[i].c1=out_en_buf.out[i+2*N];
+                out2_t_buf_func[i].c1=out_en_buf.out[i+3*N];
+                out2_f_buf_func[i].c2=out2_a_B_buf.out[i];
+                out2_t_buf_func[i].c2=out2_a_B_buf.out[i+N];
+                out2_f_buf_func[i].n1=in.d.d[i].f;
+                out2_t_buf_func[i].n1=in.d.d[i].t;
+                out2_f_buf_func[i].vdd=supply.vdd;
+                out2_t_buf_func[i].vdd=supply.vdd;
+                out2_f_buf_func[i].vss=supply.vss;
+                out2_t_buf_func[i].vss=supply.vss;
+                out2_t_buf_func[i].pr_B = _reset_BXX[i+N];
+                out2_t_buf_func[i].sr_B = _reset_BXX[i+N];
+                out2_f_buf_func[i].pr_B = _reset_BXX[i+N];
+                out2_f_buf_func[i].sr_B = _reset_BXX[i+N];
+                out2_f_buf_func[i].n2=_c_t_buf[i];
+                out2_t_buf_func[i].n2=_c_t_buf[i];
+            )
+        }
+
+        export template<pint N>
+        defproc fork (awMx1of2<N> in; awMx1of2<N> out1; awMx1of2<N> out2 ; bool? reset_B; power supply) {
+          
+          // control 
+          bool _en, _reset_BX,_reset_BXX[N*2];
+          A_4C_RB_X4 inack_ctl(.c1=_en,.c2=in.v,.c3=out1.v,.c4=out2.v,.y=in.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+          A_1C2P_X1 en_ctl(.c1=in.a,.p1=out1.v,.p2=out2.v,.y=_en,.vdd=supply.vdd,.vss=supply.vss);
+          
+
+          //reset_buffers
+          BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+          sigbuf<N*2> reset_bufarray(.in=_reset_BX, .out=_reset_BXX);
+
+
+          //validity
+          bool _in_v;
+          vtree<N> vc(.in=in.d,.out=_in_v,.supply=supply);
+          BUF_X4 in_v_buf(.a=_in_v, .y=in.v,.vdd=supply.vdd,.vss=supply.vss);
+
+          //function
+            //func buffer out1
+            bool _out1_a_B;
+            A_2C1N_RB_X4 out1_f_buf_func[N];
+            A_2C1N_RB_X4 out1_t_buf_func[N];
+            sigbuf<N*2> out1_en_buf(.in=_en, .supply=supply);
+            INV_X1 out1_a_inv(.a=out1.a,.y=_out1_a_B);
+            sigbuf<N*2> out1_a_B_buf(.in=_out1_a_B);
+            (i:N: 
+                out1_f_buf_func[i].y=out1.d.d[i].f;
+                out1_t_buf_func[i].y=out1.d.d[i].t;
+                out1_f_buf_func[i].c1=out1_en_buf.out[i];
+                out1_t_buf_func[i].c1=out1_en_buf.out[i+N];
+                out1_f_buf_func[i].c2=out1_a_B_buf.out[i];
+                out1_t_buf_func[i].c2=out1_a_B_buf.out[i+N];
+                out1_f_buf_func[i].n1=in.d.d[i].f;
+                out1_t_buf_func[i].n1=in.d.d[i].t;
+                out1_f_buf_func[i].vdd=supply.vdd;
+                out1_t_buf_func[i].vdd=supply.vdd;
+                out1_f_buf_func[i].vss=supply.vss;
+                out1_t_buf_func[i].vss=supply.vss;
+                out1_t_buf_func[i].pr_B = _reset_BXX[i];
+                out1_t_buf_func[i].sr_B = _reset_BXX[i];
+                out1_f_buf_func[i].pr_B = _reset_BXX[i];
+                out1_f_buf_func[i].sr_B = _reset_BXX[i];
+            )
+            //func buffer out2
+            bool _out2_a_B;
+            A_2C1N_RB_X4 out2_f_buf_func[N];
+            A_2C1N_RB_X4 out2_t_buf_func[N];
+            sigbuf<N*2> out2_en_buf(.in=_en, .supply=supply);
+            INV_X1 out2_a_inv(.a=out2.a,.y=_out2_a_B);
+            sigbuf<N*2> out2_a_B_buf(.in=_out2_a_B);
+            (i:N: 
+                out2_f_buf_func[i].y=out2.d.d[i].f;
+                out2_t_buf_func[i].y=out2.d.d[i].t;
+                out2_f_buf_func[i].c1=out2_en_buf.out[i];
+                out2_t_buf_func[i].c1=out2_en_buf.out[i+N];
+                out2_f_buf_func[i].c2=out2_a_B_buf.out[i];
+                out2_t_buf_func[i].c2=out2_a_B_buf.out[i+N];
+                out2_f_buf_func[i].n1=in.d.d[i].f;
+                out2_t_buf_func[i].n1=in.d.d[i].t;
+                out2_f_buf_func[i].vdd=supply.vdd;
+                out2_t_buf_func[i].vdd=supply.vdd;
+                out2_f_buf_func[i].vss=supply.vss;
+                out2_t_buf_func[i].vss=supply.vss;
+                out2_t_buf_func[i].pr_B = _reset_BXX[i];
+                out2_t_buf_func[i].sr_B = _reset_BXX[i];
+                out2_f_buf_func[i].pr_B = _reset_BXX[i];
+                out2_f_buf_func[i].sr_B = _reset_BXX[i];
+            )
+        }
+        
+        // Demux 
+        export template<pint N; pbool CONDITION_SIGN>
+        // @TODO docs
+        // also note this is not used in the final texel chip
+        defproc demux_td (awMx1of2<N> in; awMx1of2<N> out; a1of1 token; bool? reset_B; awMx1of2<1> cond; power supply) {
+            //control
+            bool _en, _reset_BX,_reset_BXX[N], _out_v, _in_c_v_, _reset_BXt;
+            awMx1of2<N> out1 = out;
+
+            
+            OR2_X1 out_or(.a=out1.v, .b=token.r, .y=_out_v,.vdd=supply.vdd,.vss=supply.vss);
+            A_3C_RB_X4 inack_ctl(.c1=_en,.c2=_in_c_v_,.c3= _out_v,.y=in.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            A_1C1P_X1 en_ctl(.c1=in.a,.p1=_out_v,.y=_en,.vdd=supply.vdd,.vss=supply.vss);
+            BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            BUF_X1 reset_buf_token(.a=_reset_BX, .y=_reset_BXt,.vdd=supply.vdd,.vss=supply.vss);
+            sigbuf<N> reset_bufarray(.in=_reset_BX, .out=_reset_BXX, .supply=supply);
+            //validity
+            bool _in_v, _c_tk_buf, _c_d_buf[N], _c_v, cond_inv_t, cond_inv_f;
+
+
+            cond.a = in.a;
+            cond.v = _c_v;
+            
+            OR2_X1 c_f_c_t_or(.a=cond.d.d[0].t, .b=cond.d.d[0].f, .y=_c_v,.vdd=supply.vdd,.vss=supply.vss);
+            
+            //orientation of condition
+            [ CONDITION_SIGN ->
+            BUF_X1 c_buf_tk(.a=cond.d.d[0].t, .y=_c_tk_buf, .vss = supply.vss, .vdd = supply.vdd);
+            sigbuf<N> c_buf_d(.in=cond.d.d[0].f, .out=_c_d_buf, .supply=supply);
+            [] else ->
+            
+            BUF_X1 c_buf_tk(.a=cond.d.d[0].f, .y=_c_tk_buf, .vss = supply.vss, .vdd = supply.vdd);
+            sigbuf<N> c_buf_d(.in=cond.d.d[0].t, .out=_c_d_buf, .supply=supply);
+            ]
+
+            
+            vtree<N> vc(.in=in.d,.out=_in_v,.supply=supply);
+            
+            A_2C_B_X1 c_el(.c1=_c_v, .c2=_in_v, .y=_in_c_v_,.vdd=supply.vdd,.vss=supply.vss);
+            BUF_X4 in_v_buf(.a=_in_v, .y=in.v,.vdd=supply.vdd,.vss=supply.vss);
+            
+            
+            //function
+            //func buffer out1
+            bool _out1_a_B;
+            A_2C2N_RB_X4 out1_f_buf_func[N];
+            A_2C2N_RB_X4 out1_t_buf_func[N];
+            sigbuf<N*2> out1_en_buf(.in=_en, .supply=supply);
+            INV_X1 out1_a_inv(.a=out1.a,.y=_out1_a_B, .vss = supply.vss, .vdd = supply.vdd);
+            sigbuf<N*2> out1_a_B_buf(.in=_out1_a_B, .supply=supply);
+            (i:N: 
+                out1_f_buf_func[i].y=out1.d.d[i].f;
+                out1_t_buf_func[i].y=out1.d.d[i].t;
+                out1_f_buf_func[i].c1=out1_en_buf.out[i];
+                out1_t_buf_func[i].c1=out1_en_buf.out[i+N];
+                out1_f_buf_func[i].c2=out1_a_B_buf.out[i];
+                out1_t_buf_func[i].c2=out1_a_B_buf.out[i+N];
+                out1_f_buf_func[i].n1=in.d.d[i].f;
+                out1_t_buf_func[i].n1=in.d.d[i].t;
+                out1_f_buf_func[i].vdd=supply.vdd;
+                out1_t_buf_func[i].vdd=supply.vdd;
+                out1_f_buf_func[i].vss=supply.vss;
+                out1_t_buf_func[i].vss=supply.vss;
+                out1_t_buf_func[i].pr_B = _reset_BXX[i];
+                out1_t_buf_func[i].sr_B = _reset_BXX[i];
+                out1_f_buf_func[i].pr_B = _reset_BXX[i];
+                out1_f_buf_func[i].sr_B = _reset_BXX[i];
+                out1_f_buf_func[i].n2=_c_d_buf[i];
+                out1_t_buf_func[i].n2=_c_d_buf[i];
+            )
+
+            //token out
+           
+          bool token_a_out;
+          A_2C2N_RB_X4 token_buf;
+          INV_X1 outt_a_inv(.a=token.a,.y=token_a_out, .vss = supply.vss, .vdd = supply.vdd);
+
+          
+          token_buf.y = token.r;
+          token_buf.c1 = _en;
+          token_buf.c2 = token_a_out; 
+          token_buf.n1 = _c_tk_buf;
+          token_buf.n2 = _in_v;
+          
+          token_buf.vdd = supply.vdd;
+          token_buf.vss = supply.vss;
+          token_buf.pr_B = _reset_BXt;
+          token_buf.sr_B = _reset_BXt;
+        }
+
+        /** 
+         * Drops a packet if condition is met, otherwise passes it on.
+         * This is a very lazy implementation, where the cond MUST NOT CHANGE DURING OPERATION.
+         * Means that this should be used in a very small set of circumstances.
+         * 
+         * params:
+         * N: size of packet
+         * CONDITION_DROP: value of cond when packets are dropped.
+         */
+        export template<pint N; pbool CONDITION_DROP>
+        defproc dropper_static (awMx1of2<N> in; awMx1of2<N> out; bool? cond; power supply) {
+            bool _drop, _dropB;
+            INV_X1 inv(.a = cond, .vss = supply.vss, .vdd = supply.vdd);
+
+            [~CONDITION_DROP ->
+                _dropB = cond;
+                _drop = inv.y;
+            [] CONDITION_DROP ->
+                _drop = cond;
+                _dropB = inv.y;
+            ]
+
+            bool _in_vX;
+            vtree<N> vt(.in = in.d, .supply = supply);
+            BUF_X4 in_v_buf(.a = vt.out, .y = _in_vX, .vss = supply.vss, .vdd = supply.vdd);
+            AND2_X1 and2(.a = _drop, .b = _in_vX, .vss = supply.vss, .vdd = supply.vdd);
+            OR2_X1 or2(.a = out.a, .b = and2.y, .vss = supply.vss, .vdd = supply.vdd);
+            A_2C_B_X1 ack_Cel(.c1 = or2.y, .c2 = _in_vX, .y = in.a);
+            // _in_vX = in.v;
+
+            // Sigbufs
+            sigbuf<N*2> sb_dropB(.in = _dropB, .supply = supply);
+            sigbuf<N*2+1> sb_in_v(.in = _in_vX, .supply = supply);
+            sb_in_v.out[2*N] = in.v;
+
+            AND3_X1 and_t[N];
+            AND3_X1 and_f[N];
+            (i:N:
+                and_t[i].a = in.d.d[i].t;
+                and_f[i].a = in.d.d[i].f;
+
+                and_t[i].y = out.d.d[i].t;
+                and_f[i].y = out.d.d[i].f;
+                
+                and_t[i].b = sb_dropB.out[i];
+                and_f[i].b = sb_dropB.out[i+N];
+
+                and_t[i].c = sb_in_v.out[i];
+                and_f[i].c = sb_in_v.out[i+N];
+
+                and_t[i].vss = supply.vss;
+                and_t[i].vdd = supply.vdd;
+            )
+
+
+
+        }
+        
+        
+        export 
+        defproc arbiter_handshake(a1of1 in1; a1of1 in2; a1of1 out; power supply)
+        {
+          bool _y1_arb,_y2_arb;
+
+          A_2C_B_X1 ack_cell1(.c1 = out.a,.c2 = _y1_arb,.y = in1.a,.vdd = supply.vdd, .vss = supply.vss);
+          A_2C_B_X1 ack_cell2(.c1 = out.a,.c2 = _y2_arb,.y = in2.a,.vdd = supply.vdd, .vss = supply.vss);
+          OR2_X1 or_cell(.a = _y1_arb, .b = _y2_arb, .y = out.r,.vdd = supply.vdd, .vss = supply.vss);
+          ARBITER arbiter(.a = in1.r, .b = in2.r, .c = in2.a, .d = in1.a, .y1 = _y1_arb, .y2 = _y2_arb, .vdd = supply.vdd, .vss = supply.vss);
+          
+        }
+        //The buffer_t_valid doesn't work
+        // export 
+        // defproc buffer_t_valid(a1of1 in; a1of1 out; bool? reset_B; power supply)
+        // {
+        //     //control
+        //     bool _en, _reset_BX;
+        //     A_3C_RB_X4 inack_ctl(.c1=_en,.c2=in.r,.c3=out.r,.y=in.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+        //     A_1C1P_X1 en_ctl(.c1=in.a,.p1=out.r,.y=_en,.vdd=supply.vdd,.vss=supply.vss);
+            
+        //     //function
+        //     bool _out_a_B;
+        //     INV_X1 inv_outa(.a = out.a,.y=_out_a_B,.vdd = supply.vdd,.vss=supply.vss);
+        //     A_2C1N_RB_X4 buf_func(.c1 = _en,.c2 = _out_a_B, .n1 = in.r,.y = out.r, .pr_B = _reset_BX, .sr_B = _reset_BX,.vdd = supply.vdd,.vss=supply.vss);
+
+            
+        //     //reset buffers
+        //     BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+        // }
+
+        
+
+        export template<pint N>
+        defproc merge (awMx1of2<N> in1; awMx1of2<N> in2; awMx1of2<N> out ; bool? reset_B; power supply) {
+
+          //out acknowledge sigbuffer and inverter
+          bool _out_a_B,_out_a_BX[2*N];
+          INV_X1 out_a_inverter(.a = out.a, .y = _out_a_B);
+          sigbuf<2*N> out_a_buffer(.in = _out_a_B,.out = _out_a_BX,.supply=supply);
+
+          //control
+          bool _in1_a_B,_in2_a_B,_en,_en_X[2*N], _reset_BX,_reset_BXX[2*N];
+          bool _in1_arb,_in2_arb,_in1_arb_X[2*N],_in2_arb_X[2*N];
+          A_4C_RB_X4 in1ack_ctl(.c1=_in1_arb,.c2=_en,.c3=in1.v,.c4=out.v,.y=in1.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+          A_4C_RB_X4 in2ack_ctl(.c1=_in2_arb,.c2=_en,.c3=in2.v,.c4=out.v,.y=in2.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+          A_4P1N1N_X1 en_ctl(.p1 = in1.a,.p2=in2.a,.p3=out.a,.p4 = out.v, .na1 = in1.a,.nb1 = in2.a,.y = _en,.vdd=supply.vdd,.vss=supply.vss);
+          sigbuf<2*N> en_buffer(.in = _en,.out = _en_X,.supply=supply);
+          INV_X1 in1ack_ctl_inv(.a=in1.a,.y=_in1_a_B,.vdd=supply.vdd,.vss=supply.vss);
+          INV_X1 in2ack_ctl_inv(.a=in2.a,.y=_in2_a_B,.vdd=supply.vdd,.vss=supply.vss);
+
+          //reset_buffers
+          BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+          sigbuf<N*2> reset_bufarray(.in=_reset_BX, .out=_reset_BXX);
+
+          //validity
+          a1of1 _in1_temp,_in2_temp,_out_temp;
+          bool _in1_arb_temp,_in2_arb_temp;
+          vtree<N> vc1(.in=in1.d,.out=in1.v,.supply=supply);
+          vtree<N> vc2(.in=in2.d,.out=in2.v,.supply=supply);
+          arbiter_handshake validity_arb(.in1 = _in1_temp,.in2 = _in2_temp,.out =_out_temp, .supply = supply);
+          _in1_temp.r = in1.v;
+          _in2_temp.r = in2.v;
+          _in1_temp.a = _in1_arb_temp;
+          _in2_temp.a = _in2_arb_temp;
+          _out_temp.r = _out_temp.a;
+          AND2_X1 AND_arb1(.a = _in2_a_B,.b = _in1_arb_temp, .y = _in1_arb);
+          AND2_X1 AND_arb2(.a = _in1_a_B,.b = _in2_arb_temp, .y = _in2_arb);
+          sigbuf<2*N> arb2function1(.in = _in1_arb,.out = _in1_arb_X,.supply=supply);
+          sigbuf<2*N> arb2function2(.in = _in2_arb,.out = _in2_arb_X,.supply=supply);
+
+          //function
+          A_2C2N2N_RB_X1 merge_func_t[N];
+          A_2C2N2N_RB_X1 merge_func_f[N];
+          (i:N: 
+            merge_func_t[i].c1 = _en_X[i];
+            merge_func_t[i].c2 = _out_a_BX[i];
+            merge_func_t[i].na1 = _in1_arb_X[i];
+            merge_func_t[i].na2 = in1.d.d[i].t;
+            merge_func_t[i].nb1 = _in2_arb_X[i];
+            merge_func_t[i].nb2 = in2.d.d[i].t;
+            merge_func_t[i].y = out.d.d[i].t;
+            merge_func_t[i].vdd=supply.vdd;
+            merge_func_t[i].vss=supply.vss;
+            merge_func_t[i].pr_B = _reset_BXX[i];
+            merge_func_t[i].sr_B = _reset_BXX[i];
+
+            merge_func_f[i].c1 = _en_X[i+N];
+            merge_func_f[i].c2 = _out_a_BX[i+N];
+            merge_func_f[i].na1 = _in1_arb_X[i+N];
+            merge_func_f[i].na2 = in1.d.d[i].f;
+            merge_func_f[i].nb1 = _in2_arb_X[i+N];
+            merge_func_f[i].nb2 = in2.d.d[i].f;
+            merge_func_f[i].y = out.d.d[i].f;
+            merge_func_f[i].vdd=supply.vdd;
+            merge_func_f[i].vss=supply.vss;
+            merge_func_f[i].pr_B = _reset_BXX[i+N];
+            merge_func_f[i].sr_B = _reset_BXX[i+N];
+            )
+        }
+ 
+        export 
+        defproc buffer_t(a1of1 in; a1of1 out; bool? reset_B; power supply)
+        {
+            //control
+            bool _en, _reset_BX;
+            A_2C1N_RB_X4 inack_ctl(.c1=_en,.c2=in.r,.n1=out.r,.y=in.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            A_1C1P_X1 en_ctl(.c1=in.a,.p1=out.r,.y=_en,.vdd=supply.vdd,.vss=supply.vss);
+            
+            //function
+            bool _out_a_B;
+            INV_X1 inv_outa(.a = out.a,.y=_out_a_B,.vdd = supply.vdd,.vss=supply.vss);
+            A_2C1N_RB_X4 buf_func(.c1 = _en,.c2 = _out_a_B, .n1 = in.r,.y = out.r, .pr_B = _reset_BX, .sr_B = _reset_BX,.vdd = supply.vdd,.vss=supply.vss);
+
+            
+            //reset buffers
+            BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+        }
+        // A template creating a FIFO of N buffers tokens
+        export template<pint N>
+        defproc fifo_t(a1of1 in; a1of1 out; bool? reset_B; power supply)
+        {
+          buffer_t fifo_element[N];
+          bool _reset_BXX[N];
+          fifo_element[0].in.r = in.r;
+          fifo_element[0].in.a = in.a;
+          fifo_element[0].supply = supply;
+          fifo_element[0].reset_B = _reset_BXX[0];
+          (i:1..N-1:
+            fifo_element[i].in.r = fifo_element[i-1].out.r;
+            fifo_element[i].in.a = fifo_element[i-1].out.a;
+            fifo_element[i].supply = supply;
+            fifo_element[i].reset_B = _reset_BXX[i];
+          )
+          fifo_element[N-1].out.r = out.r;
+          fifo_element[N-1].out.a = out.a;
+
+          // reset buffers
+          bool _reset_BX;
+          BUF_X1 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+          sigbuf<N> reset_bufarray(.in=_reset_BX, .out=_reset_BXX, .supply = supply);
+        }
+
+        // Programmable delay line.
+        // N is the number of layers,
+        // the longest layer having 2**N DLY elements
+        // Circuit for creating delays, there are N delay layers.  
+        // The block has the parameters:
+        // N -> the number is the number of layers with the longest being 2**N elements
+        // wl -> word length, length of each word 
+        // N_dly_cfg -> the number of config bits in the ACK delay line
+        // The block has the pins:
+        // in -> input data
+        // out -> output data
+        // s -> bit word with size N that sets delay configuration. int(s) = number of delays
+        export template<pint N>
+        defproc delayprog (bool! out; bool? in, s[N]; power supply)
+        {
+            
+            { N >= 0 : "What?" };
+            { N < 10 : "Delay prog size is given in 2**N. Given N is ridiculous." };
+
+
+            AND2_X1 and2[N];
+            MUX2_X1 mu2[N];
+            DLY4_X1 dly[(1<<N) -1];
+
+            bool _a[N+1]; // Holds the input to each row
+         
+            _a[0] = in;
+
+            pint i_delay;
+            i_delay = 0; // Index of the last connected delay element
+
+            (i:0..N-1:
+                // For each row
+                and2[i].a = _a[i];
+                and2[i].b = s[i];
+
+                // Delays
+                dly[i_delay].a = and2[i].y;
+                i_delay = i_delay + 1;
+                (j:1..(1<<i)-1:
+                    dly[i_delay].a = dly[i_delay-1].y;
+                    i_delay = i_delay +1;
+                )
+
+                // Mux
+                mu2[i].a = _a[i];
+                mu2[i].s = s[i];
+                dly[i_delay-1].y = mu2[i].b;
+                _a[i+1] = mu2[i].y;
+            )
+
+            out = mu2[N-1].y;
+
+
+            // Connect everything to vdd/gnd
+            (i:N:and2[i].vdd = supply.vdd;)
+            (i:N:mu2[i].vdd = supply.vdd;)
+            (i:((1<<N)-1):dly[i].vdd = supply.vdd;)
+
+            (i:N:and2[i].vss = supply.vss;)
+            (i:N:mu2[i].vss = supply.vss;)
+            (i:((1<<N)-1):dly[i].vss = supply.vss;)
+        }
+
+        // Non programmable delays
+        // N is number of delays to have in series (not log!!).
+        // Is useful for testing purposes.
+        // But should probably remove before running innovus etc.
+        export template<pint N>
+        defproc delay_chain (bool out; bool in; power supply) {
+            { N >= 0 : "What?" };
+            [N >= 1 ->
+              DLY4_X1 dly[N];
+
+              dly[0].vdd = supply.vdd;
+              dly[0].vss = supply.vss;
+              dly[0].a = in;
+
+              (i:1..N-1:
+                  dly[i].vdd = supply.vdd;
+                  dly[i].vss = supply.vss;
+                  dly[i].a = dly[i-1].y;
+              )
+
+              dly[N-1].vdd = supply.vdd;
+              dly[N-1].vss = supply.vss;
+              dly[N-1].y = out;
+            [] N = 0 ->
+              in = out;
+            ]
+            
+        }
+
+
+        /**
+         * Appends a hard-coded word "VAL" to an input.
+         * Works by piping through all sigs, but adding
+         * some extra sigs when the input is valid.
+         * N is size of channel to pipe through.
+         * NVAL is size of word to be put on output.
+         * VAL is word to be put on output.
+         * Output looks like
+         * 0..............N........N+NVAL-1
+         * --input_data----LSB....MSB
+         *
+         */
+        export template<pint N, NVAL, VAL>
+        defproc append (awMx1of2<N> in; awMx1of2<N+NVAL> out; power supply)
+        {
+            { N >= 0 : "What?" };
+            { NVAL >= 0 : "What?" };
+            { VAL < 1<<NVAL : "VAL too big!" };
+
+            // valid tree
+            vtree<N> in_val(.supply = supply);
+            (i:N:
+                in_val.in.d[i].t = in.d.d[i].t;
+                in_val.in.d[i].f = in.d.d[i].f;
+            )
+
+            // wire through most signals
+            (i:N:
+                in.d.d[i].t = out.d.d[i].t;
+                in.d.d[i].f = out.d.d[i].f;
+            )
+            in.a = out.a;
+            in.v = out.v;
+
+            // appender
+            pint bitval;
+            sigbuf<NVAL> sb(.in = in_val.out, .supply = supply);
+            TIELO_X1 tielows[NVAL];
+            (i:NVAL:tielows[i].vss = supply.vss; tielows[i].vdd = supply.vdd;)
+            (i:0..NVAL-1:
+                bitval = (VAL & ( 1 << i )) >> i;
+                [  bitval = 1 ->
+                    out.d.d[i+N].t = sb.out[i];
+                    out.d.d[i+N].f = tielows[i].y;
+                [] bitval = 0 ->
+                    out.d.d[i+N].f = sb.out[i];
+                    out.d.d[i+N].t = tielows[i].y;
+                [] bitval >= 2 -> {false : "fuck"};        
+                ]
+            )
+
+        }
+/**
+* Drops bits. Slices lines. Crop in. Enhance.
+* Useful if say, have an 8 bit packet coming in, but 
+* receiver only needs 3 of them.
+* KEEPS all bits between the two bounds.
+* e.g. drop_lines(8, 0, 3) would keep lines [0,1,2]
+**/
+export template<pint N, N0, N1>
+defproc slice_data(awMx1of2<N> in; awMx1of2<std::min(N1,N)-std::max(N0,0)> out; power supply) {
+    // {N0 >= 0 : "N0 can be minimum 0!"};
+    // {N1 <= N : "N1 can be maximum N"};
+
+    pint _N1, _N0;
+
+    _N1 = std::min(N1,N);
+    _N0 = std::max(N0,0);
+
+    [_N0 = 0 & _N1 = N ->
+      in = out;
+    [] _N0 != 0 | _N1 != N ->
+
+      vtree<N> in_vt(.in = in.d, .out = in.v, .supply = supply);
+      (i:_N1-_N0:
+          in.d.d[i + _N0] = out.d.d[i];
+      )
+
+      // in.a = out.a;
+
+      A_2C_B_X1 Cel(.c1 = out.a, .c2 =in.v, .y = in.a, .vss = supply.vss, .vdd = supply.vdd);
+
+    ]
+
+
+
+}
+
+  // this is a wrapper for the demux, such that the condition bit is absorbed into the data
+  // and demux msb is just defaulting it to the msb
+  export template<pint N; pint CONDITION_BIT>
+        defproc demux_bit (awMx1of2<N+1> in; awMx1of2<N> out1; awMx1of2<N> out2; bool? reset_B; power supply)
+        {
+            demux<N> demux(.reset_B = reset_B, .out1=out1, .out2=out2);
+
+            in.d.d[CONDITION_BIT].f = demux.cond.d.d[0].f;
+            in.d.d[CONDITION_BIT].t = demux.cond.d.d[0].t;
+
+            A_2C_B_X1 val_Cel(.c1 = demux.in.v, .c2 = demux.cond.v, .y = in.v,
+                .vdd = supply.vdd, .vss = supply.vss);
+
+            // Not actually needed bc the current version of demux
+            // Something like below should be added once the handshakes are properly decoupled.
+            // wires the data and cond ack lines together anyway.
+            // A_2C_B_X1 ack_Cel(.c1 = demux.in.a, .c2 = demux.cond.a, .y = in.a,
+            //     .vdd = supply.vdd, .vss = supply.vss);
+
+            // in.v = demux.in.v;
+            in.a = demux.in.a;
+
+            (i:0..CONDITION_BIT-1:
+                in.d.d[i].f = demux.in.d.d[i].f;
+                in.d.d[i].t = demux.in.d.d[i].t;)
+
+            (i:CONDITION_BIT+1..N:
+                in.d.d[i].f = demux.in.d.d[i-1].f;
+                in.d.d[i].t = demux.in.d.d[i-1].t;)
+
+        }
+
+      export template<pint N>
+        defproc demux_bit_msb (awMx1of2<N+1> in; awMx1of2<N> out1; awMx1of2<N> out2; bool? reset_B; power supply)
+        {
+            demux_bit<N,N> demux(.in = in, .out1 = out1, .out2 = out2, .reset_B = reset_B, .out1=out1, .out2=out2);
+        }
+
+/**
+* Create M sigbufs to buffer an M bool array to N strength.
+* Done lazily.
+**/
+export template<pint M, N>
+defproc sigbuf_boolarray(bool? in[M]; bool! out[M]; power supply) {
+    sigbuf<N> sb[M];
+    (i:M:
+        sb[i].in = in[i];
+        sb[i].out[0] = out[i];
+        sb[i].supply = supply;
+    )
+
+}
+
+
+}}

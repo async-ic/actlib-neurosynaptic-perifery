@@ -1,0 +1,10 @@
+initialize
+load-scm "helper.scm"
+random
+set GND 0
+set Vdd 1
+set Reset 1
+
+mode reset
+cycle
+status U

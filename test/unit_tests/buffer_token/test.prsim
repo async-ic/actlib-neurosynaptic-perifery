@@ -1,0 +1,20 @@
+watchall
+system "echo '[0] code starts'"
+set t.in.r 0
+set t.out.a 0
+cycle
+set Reset 0
+cycle
+status X
+mode run
+set Reset 1
+cycle
+system "echo '[1] reset done'"
+system "echo '----------------------------------------------------------------------------------------------------'"
+set t.in.r 1
+cycle
+assert t.out.r 1
+set t.out.a 1
+cycle
+assert t.in.a 1
+

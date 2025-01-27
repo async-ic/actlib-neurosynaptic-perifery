@@ -1,0 +1,733 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)  
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+namespace tmpl {
+    namespace neurosynaptic_perifery{
+        export defcell KEEP (bool y; bool vdd, vss) {
+            bool _y;
+             prs{
+                 // y => _y-
+            //     [weak=1] _y -> y-
+            //     [weak=1] ~_y -> y+
+
+                 }
+        }
+
+        export defcell A_1C2N_RB_X1 (bool! y; bool? c1,n1,n2,pr_B, sr_B; bool vdd, vss) {
+            bool _y;
+            prs{
+                (~c1)|~pr_B -> _y+
+                c1 & n1 & n2 & sr_B -> _y-
+                _y => y-
+                }
+            sizing {
+                    leak_adjust <- 1; 
+                    p_n_mode <- 1;
+                    y {-1}; _y{-1} 
+                    }
+        }
+
+        export defcell A_1C1P2N_RB_X1 (bool! y; bool? c1,p1,n1,n2,pr_B, sr_B; bool vdd, vss) {
+            bool _y;
+            prs{
+                (~p1 & ~c1)|~pr_B -> _y+
+                c1 & n1 & n2 & sr_B -> _y-
+                _y => y-
+
+                }
+            sizing {
+                    leak_adjust <- 1; 
+                    p_n_mode <- 1;
+                    y {-1}; _y{-1} 
+                    }
+        }
+
+
+        export defcell A_2C1P1N_RB_X1 (bool! y; bool? c1,c2,p1,n1,pr_B,sr_B; bool vdd, vss) {
+            bool _y;
+            prs{
+                (~p1 & ~c1 & ~c2)|~pr_B -> _y+
+                c1 & c2 & n1 & sr_B -> _y-
+                _y => y-
+
+                }
+            sizing {
+                    leak_adjust <- 1; 
+                    p_n_mode <- 1;
+                    y {-1}; _y{-1} 
+                    }
+        }
+
+        export defcell A_1C1P2N_R_X1 (bool! y; bool? c1,p1,n1,n2,pr_B, sr_B; bool vdd, vss) {
+            prs{
+                (~p1 & ~c1)|~pr_B -> y-
+                c1 & n1 & n2 & sr_B -> y+
+                }
+            sizing {
+                    leak_adjust <- 1; 
+                    p_n_mode <- 1;
+                    y {-1}
+                    }
+        }
+
+
+        export defcell A_1C1P_1N_X1 (bool! y; bool? c1, p1, n1; bool vdd, vss)
+        {
+        prs{
+            ~p1 & ~c1 -> y+
+            c1 & n1 -> y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+        //Maybe deprecated?
+        //@TODO Check if it exist, otherwise delete
+        export defcell A_1C1P_B (bool! y; bool? c1, p1; bool vdd, vss)
+        {
+        bool _y;
+        prs{
+            ~p1 & ~c1 -> _y-
+            c1 -> _y+
+            _y => y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1} }
+        }
+
+
+        export defcell A_1C1P_X1 (bool! y; bool? c1, p1; bool vdd, vss)
+        {
+        prs{
+            ~p1 & ~c1 -> y+
+            c1 -> y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_1C1N_X1 (bool! y; bool? c1, n1; bool vdd, vss)
+        {
+        prs{
+            ~c1 -> y+
+            c1&n1-> y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        // export defcell A_1C1N_RB_X4 (bool! y; bool? c1, n1, pr_B, sr_B; bool vdd, vss)
+        // {
+        // bool _y;
+        // prs{
+        //     ~c1 | ~pr_B-> _y+
+        //     c1&n1&sr_B -> _y-
+        //     _y => y-
+        //     }
+        // sizing {leak_adjust <- 1; 
+        //         p_n_mode <- 1;
+        //     y {-4}; _y{-1}}
+        // }
+
+        // export defcell A_1C1N_SB_X4 (bool! y; bool? c1, n1, pr, sr; bool vdd, vss)
+        // {
+        // bool _y;
+        // prs{
+        //     ~c1 & ~sr-> _y+
+        //     c1&n1 | pr -> _y-
+        //     _y => y-
+        //     }
+        // sizing {leak_adjust <- 1; 
+        //         p_n_mode <- 1;
+        //     y {-4}; _y{-1}}
+        // }
+
+        export defcell A_1C2N_R_X1 (bool! y; bool? c1, n1, n2, pr_B, sr_B; bool vdd, vss)
+        {
+        prs{
+            ~c1 | ~pr_B-> y+
+            c1&n1&n2&sr_B -> y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}}
+        }
+
+        export defcell A_1C2N_RB_X4 (bool! y; bool? c1, n1, n2, pr_B, sr_B; bool vdd, vss)
+        {
+        bool _y;
+        prs{
+            ~c1 | ~pr_B-> _y+
+            c1&n1&n2&sr_B -> _y-
+            _y => y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}; _y{-1}}
+        }
+
+        export defcell A_1C2N_SB_X4 (bool! y; bool? c1, n1, n2, pr, sr; bool vdd, vss)
+        {
+        bool _y;
+        prs{
+            ~c1 & ~sr-> _y+
+            c1&n1&n2 | pr -> _y-
+            _y => y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}; _y{-1}}
+        }
+
+        export defcell A_2C1N_SB_X4 (bool! y; bool? c1, c2, n1, pr, sr; bool vdd, vss)
+        {
+        bool _y;
+        prs{
+            ~c1 & ~c2 & ~sr-> _y+
+            c1&c2&n1 | pr -> _y-
+            _y => y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}; _y{-1}}
+        }
+
+
+        export defcell A_1C2P1N_X1 (bool! y; bool? c1, p1, p2, n1; bool vdd, vss)
+        {
+        prs{
+            ~p1 & ~p2 & ~c1 -> y+
+            c1 & n1 -> y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_1C2P_B_X1 (bool! y; bool? c1, p1, p2; bool vdd, vss)
+        {
+        bool _y;
+        prs{
+            ~p1 & ~p2 & ~c1 -> _y-
+            c1 -> _y+
+            _y => y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1} }
+        }
+        
+
+        export defcell A_1C2P_X1 (bool! y; bool? c1, p1, p2; bool vdd, vss)
+        {
+        prs{
+            ~p1 & ~p2 & ~c1 -> y+
+            c1 -> y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_1C3P2P2N_R_X1 (bool! y; bool? c1, p1, p2, p3, p4, p5, n1, n2, pr_B, sr_B; bool  vdd, vss)
+        {
+        prs{
+            (~p1 & ~p2 & ~p3 & ~c1)|(~p4&~p5&~c1)|~pr_B -> y+
+            c1 & n1 & n2 & sr_B -> y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_2C2N2N_RB_X1 (bool ! y; bool? c1, c2, na1, na2, nb1, nb2, pr_B, sr_B; bool vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & ((na1 & na2) | (nb1 & nb2)) & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1}}
+        }
+
+        export defcell A_2C2N2N_RB_X2 (bool ! y; bool? c1, c2, n1, n2, n3, n4, pr_B, sr_B; bool vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & ((n1 & n2) | (n3 & n4)) & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-2}; _y{-1}}
+        }
+
+
+        export defcell A_2C2N2N_RB_X4 (bool ! y; bool? c1, c2, n1, n2, n3, n4, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & ((n1 & n2) | (n3 & n4)) & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}; _y{-1}}
+        }
+
+
+        export defcell A_2C2N2N_R_X1 (bool ! y; bool? c1, c2, n1, n2, n3, n4, pr_B, sr_B; bool? vdd, vss)
+        {
+        prs{
+            (~c1 & ~c2) | ~pr_B -> y+
+            c1 & c2 & ((n1 & n2) | (n3 & n4)) & sr_B -> y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_2C2N_RB_X1 (bool ! y; bool? c1, c2, n1, n2, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & n1 & n2 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1}}
+        }
+
+        export defcell A_2C2N_RB_X2 (bool ! y; bool? c1, c2, n1, n2, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & n1 & n2 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-2}; _y{-1}}
+        }
+
+        export defcell A_2C2N_RB_X4 (bool ! y; bool? c1, c2, n1, n2, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & n1 & n2 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}; _y{-1}}
+        }
+
+
+        export defcell A_2C2N_R_X1 (bool ! y; bool? c1, c2, n1, n2, pr_B, sr_B; bool? vdd, vss)
+        {
+        prs{
+            (~c1 & ~c2) | ~pr_B -> y+
+            c1 & c2 & n1 & n2 & sr_B -> y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_2C_B_X1 (bool ! y; bool? c1, c2; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            ~c1 & ~c2 -> _y+
+            c1 & c2 -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1}}
+        }
+
+        export defcell A_2C_RB_X1 (bool ! y; bool? c1, c2, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1}}
+        }
+
+        export defcell A_2C_RB_X4 (bool ! y; bool? c1, c2, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}; _y{-1}}
+        }
+
+        export defcell A_2C_R_X1 (bool ! y; bool? c1, c2, pr_B, sr_B; bool? vdd, vss)
+        {
+        prs{
+            (~c1 & ~c2) | ~pr_B -> y+
+            c1 & c2 & sr_B -> y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+        export defcell A_2C1N_RB_X1(bool ! y; bool? c1, c2, n1, pr_B, sr_B; bool? vdd, vss)
+        {
+            bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & n1 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1}}
+        }
+
+        export defcell A_2C1N_R_X1(bool ! y; bool? c1, c2, n1, pr_B, sr_B; bool? vdd, vss)
+        {
+        prs{
+            (~c1 & ~c2) | ~pr_B -> y+
+            c1 & c2 & n1 & sr_B -> y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_2C1N_RB_X4(bool ! y; bool? c1, c2, n1, pr_B, sr_B; bool? vdd, vss)
+        {
+            bool _y;
+        prs{
+            (~c1 & ~c2) | ~pr_B -> _y+
+            c1 & c2 & n1 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}; _y{-1}}
+        }
+        export defcell A_2C_X1 (bool ! y; bool? c1, c2; bool? vdd, vss)
+        {
+        prs{
+            ~c1 & ~c2 -> y+
+            c1 & c2 -> y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_3C_B_X1 (bool ! y; bool? c1, c2, c3; bool? vdd, vss)
+        {
+            bool _y;
+        prs{
+            ~c1 & ~c2 & ~c3 -> _y+
+            c1 & c2 & c3 -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1}}
+        }
+
+        export defcell A_3C_RB_X1 (bool ! y; bool? c1, c2, c3, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2 & ~c3) | ~pr_B -> _y+
+            c1 & c2 & c3 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1}}
+        } 
+
+        export defcell A_3C_RB_X2 (bool ! y; bool? c1, c2, c3, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2 & ~c3) | ~pr_B -> _y+
+            c1 & c2 & c3 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-2}; _y{-1}}
+        }
+
+        export defcell A_3C_RB_X4 (bool ! y; bool? c1, c2, c3, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2 & ~c3) | ~pr_B -> _y+
+            c1 & c2 & c3 & sr_B -> _y-
+            _y => y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}; _y{-1}}
+        }
+
+        export defcell A_3C_R_X1 (bool ! y; bool? c1, c2, c3, pr_B, sr_B; bool? vdd, vss)
+        {
+        prs{
+            (~c1 & ~c2 & ~c3) | ~pr_B -> y+
+            c1 & c2 & c3 & sr_B -> y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_3C_X1 (bool ! y; bool? c1, c2, c3; bool? vdd, vss)
+        {
+        prs{
+            ~c1 & ~c2 & ~c3 -> y+
+            c1 & c2 & c3 -> y-
+        }
+        sizing {    
+                leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_4C_RB_X1 (bool! y; bool? c1, c2, c3, c4, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2 & ~c3 & ~c4) | ~pr_B -> _y+
+            c1 & c2 & c3 & c4 & sr_B-> _y-
+            _y => y-
+            }
+        sizing {    leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1}}
+        }
+
+        export defcell A_4C_RB_X2 (bool! y; bool? c1, c2, c3, c4, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2 & ~c3 & ~c4) | ~pr_B -> _y+
+            c1 & c2 & c3 & c4 & sr_B-> _y-
+            _y => y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-2}; _y{-1}}
+        }
+
+        export defcell A_4C_RB_X4 (bool! y; bool? c1, c2, c3, c4, pr_B, sr_B; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            (~c1 & ~c2 & ~c3 & ~c4) | ~pr_B -> _y+
+            c1 & c2 & c3 & c4 & sr_B-> _y-
+            _y => y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-4}; _y{-1}}
+        }
+
+        export defcell A_4C_R_X1 (bool! y; bool? c1, c2, c3, c4, pr_B, sr_B; bool? vdd, vss)
+        {
+        prs{
+            (~c1 & ~c2 & ~c3 & ~c4) | ~pr_B -> y+
+            c1 & c2 & c3 & c4 & sr_B-> y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        export defcell A_4P1N1N_B_X1 (bool! y; bool? n1, n2, p1, p2, p3, p4; bool? vdd, vss)
+        {
+        bool _y;
+        prs{
+            ~p1 & ~p2 & ~p3 & ~p4 -> _y+
+            n1 | n2 -> _y-
+            _y => y- 
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}; _y{-1} }
+        }
+
+        export defcell A_4P1N1N_X1 (bool! y; bool? na1, nb1, p1, p2, p3, p4; bool? vdd, vss)
+        {
+        prs{
+            ~p1 & ~p2 & ~p3 & ~p4 -> y+
+            na1 | nb1 -> y-
+            }
+        sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+            y {-1}}
+        }
+
+        //Rajit example
+        defproc arbiter_Rajit (bool a, b, u, v)
+        {
+          bool _u, _v;
+          prs {
+           [keeper=0]  a &  _v -> _u-
+           [keeper=0] ~a  | ~_v  -> _u+
+           [keeper=0]  b &  _u -> _v-
+           [keeper=0] ~b  | ~_u  -> _v+
+           [keeper=0] _u  => u-
+           [keeper=0] _v => v-
+          }
+          spec {
+            mk_excllo(_u, _v)
+          }
+        }
+        defproc ARBITER (bool? a, b, c, d; bool! y1,y2; bool? vdd, vss)
+        {
+          bool _y1, _y2;
+          prs {
+           [keeper=0]  a &  _y2 -> _y1-
+           [keeper=0] ~a  | ~_y2  -> _y1+
+           [keeper=0]  b &  _y1 -> _y2-
+           [keeper=0] ~b  | ~_y1  -> _y2+
+           [keeper=0] _y1 | c  => y1-
+           [keeper=0] _y2 | d  => y2-
+          }
+          spec {
+            mk_excllo(_y1, _y2)
+          }
+        }
+        export
+        defproc A_1N_U_X4(bool? n1; bool! y; bool? vdd, vss)
+        {
+        prs{
+        [keeper=0] n1 -> y-
+        }
+        }
+
+        export
+        defproc A_2N_U_X4(bool? n1, n2; bool! y; bool? vdd, vss)
+        {
+        prs{
+        [keeper=0] n1 & n2 -> y-
+        }
+        }
+        
+        export
+        defproc A_1P_U_X4(bool? p1; bool! y; bool? vdd, vss)
+        {
+        prs{
+        [keeper=0] ~p1 -> y+
+        }
+        }
+
+        export
+        defproc A_2P_U_X4(bool? p1, p2; bool! y; bool? vdd, vss)
+        {
+        prs{
+        [keeper=0] ~p1 & ~p2 -> y+
+        }
+        }
+
+        export
+        defproc A_3P_U_X4(bool? p1, p2, p3; bool! y; bool? vdd, vss)
+        {
+        prs{
+        [keeper=0] ~p1 & ~p2 & ~p3-> y+
+        }
+        }
+
+        export
+        defproc PULLDOWN_X4(bool? a; bool! y; bool? vdd, vss) {
+            A_1N_U_X4 cell(.n1 = a, .y = y, .vdd = vdd, .vss = vss);
+        }
+
+        export
+        defproc PULLUP_X4(bool? a; bool! y; bool? vdd, vss) {
+            A_1P_U_X4 cell(.p1 = a, .y = y, .vdd = vdd, .vss = vss);
+        }
+
+        defproc A_2C2P_RB_X1(bool! y;bool? c1,c2,p1,p2,reset_B,vdd,vss){
+            bool _y;
+            prs{
+                (~p1 & ~p2 & ~c1 & ~c2)|~reset_B -> _y+
+                (c1 & c2 & reset_B) -> _y-
+                _y => y-
+            }
+            sizing {leak_adjust <- 1; 
+                p_n_mode <- 1;
+                y {-1}; _y{-1} }
+        }
+        }}
+
+
+

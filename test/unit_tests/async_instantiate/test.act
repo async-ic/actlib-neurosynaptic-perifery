@@ -1,0 +1,60 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library.
+ * It's the testing facility for cell_lib_async.act
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)  
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+import "../../neurosynaptic_perifery/cell_lib_async.act";
+open tmpl::neurosynaptic_perifery;
+A_1C1P2N_RB_X1 cell1;
+A_1C1P2N_R_X1 cell2;
+A_1C1P_1N_X1 cell3;
+A_1C1P_B cell4;
+A_1C1P_X1 cell5;
+A_1C2P1N_X1 cell6;
+A_1C2P_B_X1 cell7;
+A_1C2P_X1 cell8;
+A_1C3P2P2N_R_X1 cell9;
+A_2C2N2N_RB_X1 cell10;
+A_2C2N2N_RB_X2 cell11;
+A_2C2N2N_RB_X4 cell12;
+A_2C2N2N_R_X1 cell13;
+A_2C2N_RB_X2 cell14;
+A_2C2N_RB_X4 cell15;
+A_2C2N_R_X1 cell16;
+A_2C_B_X1 cell17;
+A_2C_RB_X1 cell18;
+A_2C_R_X1 cell19;
+A_2C_X1 cell20;
+A_3C_RB_X1 cell21;
+A_3C_RB_X2 cell22;
+A_3C_RB_X4 cell23;
+A_3C_R_X1 cell24;
+A_3C_X1 cell25;
+A_4C_RB_X1 cell26;
+A_4C_RB_X2 cell27;
+A_4C_RB_X4 cell28;
+A_4C_R_X1 cell29;
+A_4P1N1N_B_X1 cell30;
+A_4P1N1N_X1 cell31;

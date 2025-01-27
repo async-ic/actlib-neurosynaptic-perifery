@@ -1,0 +1,39 @@
+watchall
+cycle
+system "echo 'reset done'"
+set a.a 0
+set a.b 0
+advance 1000000
+status X
+mode run
+system "echo 'step 1.1 finished'"
+set a.a 1
+set a.b 1
+advance 1000000
+status X
+mode run
+system "echo 'step 1.2 finished'"
+set a.a 0
+set a.b 0
+advance 1000000
+status X
+mode run
+system "echo 'step 2.1 finished'"
+set a.a 1
+set a.b 1
+advance 1000000
+status X
+mode run
+system "echo 'step 2.2 finished'"
+set a.a 0
+set a.b 0
+advance 1000000
+status X
+mode run
+system "echo 'step 3.1 finished'"
+set a.a 0
+set a.b 1
+advance 1000000
+status X
+mode run
+system "echo 'step 3.2 finished'"

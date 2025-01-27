@@ -1,0 +1,238 @@
+watchall
+# mode run
+
+system "echo '[] Set Out Ack/Valid Low'"
+
+set e.out.a 0
+set e.out.v 0
+cycle
+
+system "echo '[] Setting Neuron Req Low'"
+
+set e.y[0].r 0
+set e.y[1].r 0
+set e.y[2].r 0
+set e.y[3].r 0
+set e.y[4].r 0
+set e.y[5].r 0
+set e.y[6].r 0
+set e.y[7].r 0
+
+set e.x[0].r 0
+set e.x[1].r 0
+set e.x[2].r 0
+set e.x[3].r 0
+set e.x[4].r 0
+set e.x[5].r 0
+set e.x[6].r 0
+set e.x[7].r 0
+set Reset 1
+
+
+cycle 
+mode run
+status X
+status 0
+set Reset 0
+cycle
+
+
+
+system "echo '[] Single Neuron Spikes (2,5), raise y[5].r'"
+
+set e.y[5].r 1
+# set e.x[2].r 1
+cycle
+
+assert e.y[5].a 1
+system "echo '[] Asserted y[5].a 1'"
+
+# assert e.e.Yarb.out.r 1
+# assert e.e.Xarb.out.r 0
+
+# assert e.e._x_v 0
+
+
+
+system "echo '[] Raise x[2].r'"
+# set e.y[5].r 1
+set e.x[2].r 1
+cycle
+assert e.x[2].a 1
+system "echo '[] Asserted x[2].a 1'"
+
+# assert e.e.Yarb.out.r 1
+# assert e.e.Xarb.out.r 1
+# assert e.e._x_v 1
+
+
+system "echo '[] Check Arbiter Acks'"
+
+# assert e.e._x_a_B 1
+
+assert e.y[0].a 0
+assert e.y[1].a 0
+assert e.y[2].a 0
+assert e.y[3].a 0
+assert e.y[4].a 0
+assert e.y[5].a 1
+assert e.y[6].a 0
+assert e.y[7].a 0
+# assert e.e.Yarb.out.a 1
+
+
+assert e.x[0].a 0
+assert e.x[1].a 0
+assert e.x[2].a 1
+assert e.x[3].a 0
+assert e.x[4].a 0
+assert e.x[5].a 0
+assert e.x[6].a 0
+assert e.x[7].a 0
+# assert e.e.Xarb.out.a 1
+
+assert-qdi-channel-valid "e.out" 6 42
+system "echo '[] Asserted output encoding valid 42'"
+set e.out.v 1
+
+system "echo '[] Finish Neuron Handshake'"
+
+set e.y[5].r 0
+set e.x[2].r 0
+cycle
+
+assert e.y[0].a 0
+assert e.y[1].a 0
+assert e.y[2].a 0
+assert e.y[3].a 0
+assert e.y[4].a 0
+assert e.y[5].a 0
+assert e.y[6].a 0
+assert e.y[7].a 0
+
+
+assert e.x[0].a 0
+assert e.x[1].a 0
+assert e.x[2].a 0
+assert e.x[3].a 0
+assert e.x[4].a 0
+assert e.x[5].a 0
+assert e.x[6].a 0
+assert e.x[7].a 0
+
+
+system "echo '[] Asserted all in acks 0'"
+
+set e.out.a 1
+cycle
+
+assert-qdi-channel-neutral "e.out" 6
+
+set e.out.a 0
+set e.out.v 0
+cycle
+
+system "echo '[] Neuron (2,5) Encoded'"
+
+
+
+
+
+
+
+
+system "echo '[] Single Neuron Spikes (5,2), raise y[2].r'"
+
+set e.y[2].r 1
+# set e.x[2].r 1
+cycle
+
+assert e.y[2].a 1
+system "echo '[] Asserted y[2].a 1'"
+
+# assert e.e.Yarb.out.r 1
+# assert e.e.Xarb.out.r 0
+
+# assert e.e._x_v 0
+
+
+
+system "echo '[] Raise x[5].r'"
+# set e.y[5].r 1
+set e.x[5].r 1
+cycle
+assert e.x[5].a 1
+system "echo '[] Asserted x[5].a 1'"
+
+# assert e.e.Yarb.out.r 1
+# assert e.e.Xarb.out.r 1
+# assert e.e._x_v 1
+
+
+system "echo '[] Check Arbiter Acks'"
+
+# assert e.e._x_a_B 1
+
+assert e.y[0].a 0
+assert e.y[1].a 0
+assert e.y[2].a 1
+assert e.y[3].a 0
+assert e.y[4].a 0
+assert e.y[5].a 0
+assert e.y[6].a 0
+assert e.y[7].a 0
+# assert e.e.Yarb.out.a 1
+
+
+assert e.x[0].a 0
+assert e.x[1].a 0
+assert e.x[2].a 0
+assert e.x[3].a 0
+assert e.x[4].a 0
+assert e.x[5].a 1
+assert e.x[6].a 0
+assert e.x[7].a 0
+# assert e.e.Xarb.out.a 1
+
+assert-qdi-channel-valid "e.out" 6 21
+system "echo '[] Asserted output encoding valid 21'"
+set e.out.v 1
+
+system "echo '[] Finish Neuron Handshake'"
+
+set e.y[2].r 0
+set e.x[5].r 0
+cycle
+
+assert e.y[0].a 0
+assert e.y[1].a 0
+assert e.y[2].a 0
+assert e.y[3].a 0
+assert e.y[4].a 0
+assert e.y[5].a 0
+assert e.y[6].a 0
+assert e.y[7].a 0
+
+
+assert e.x[0].a 0
+assert e.x[1].a 0
+assert e.x[2].a 0
+assert e.x[3].a 0
+assert e.x[4].a 0
+assert e.x[5].a 0
+assert e.x[6].a 0
+assert e.x[7].a 0
+
+
+system "echo '[] Asserted all in acks 0'"
+
+set e.out.a 1
+cycle
+
+assert-qdi-channel-neutral "e.out" 6
+
+set e.out.a 0
+set e.out.v 0
+cycle
+
+system "echo '[] Neuron (5,2) Encoded'"

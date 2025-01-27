@@ -1,0 +1,76 @@
+watchall
+
+set b.in.r 0
+
+set b.outx.a 0
+set b.outy.a 0
+
+system "echo '[] set Reset 1'"
+set Reset 1
+cycle
+status X
+
+system "echo '[] set Reset 0'"
+set Reset 0
+mode run
+cycle
+status X
+
+# spike
+set b.in.r 1
+cycle
+assert b.outx.r 0
+assert b.outy.r 1
+assert b.in.a 1
+
+set b.in.r 0
+set b.outy.a 1
+cycle
+assert b.outx.r 1
+assert b.in.a 0
+
+# send in another spike while its still dealing with previous
+set b.in.r 1
+cycle
+assert b.outx.r 1
+assert b.outy.r 0
+assert b.in.a 0
+
+set b.outx.a 1
+cycle
+assert b.outx.r 0
+assert b.outy.r 0
+assert b.in.a 0
+
+set b.outx.a 0
+set b.outy.a 0
+cycle
+assert b.outy.r 1
+assert b.outx.r 0
+assert b.in.a 1
+
+set b.in.r 0
+set b.outy.a 1
+cycle
+assert b.outx.r 1
+assert b.outy.r 0
+assert b.in.a 0
+
+set b.outx.a 1
+cycle
+assert b.outx.r 0
+assert b.outy.r 0
+
+set b.outx.a 0
+set b.outy.a 0
+cycle
+assert b.outx.r 0
+assert b.outy.r 0
+assert b.in.a 0
+
+
+
+
+
+
+

@@ -1,0 +1,62 @@
+
+system "echo '[0] starting test all 1'"
+
+set t.in[0] 1
+set t.in[1] 1
+set t.in[2] 1
+set t.in[3] 1
+set t.in[4] 1
+set t.in[5] 1
+set t.in[6] 1
+set t.in[7] 1
+set t.in[8] 1
+set t.in[9] 1
+set t.in[10] 1
+set t.in[11] 1
+set t.in[12] 1
+set t.in[13] 1
+set t.in[14] 1
+cycle
+mode run
+assert t.out 1
+system "echo '[1] starting test all 0'"
+
+set t.in[0] 0
+set t.in[1] 0
+set t.in[2] 0
+set t.in[3] 0
+set t.in[4] 0
+set t.in[5] 0
+set t.in[6] 0
+set t.in[7] 0
+set t.in[8] 0
+set t.in[9] 0
+set t.in[10] 0
+set t.in[11] 0
+set t.in[12] 0
+set t.in[13] 0
+set t.in[14] 0
+cycle
+mode run
+assert t.out 0
+
+system "echo '[2] testing state holding'"
+
+set t.in[0] 0
+set t.in[1] 0
+set t.in[2] 0
+set t.in[3] 0
+set t.in[4] 0
+set t.in[5] 1
+set t.in[6] 0
+set t.in[7] 0
+set t.in[8] 0
+set t.in[9] 0
+set t.in[10] 0
+set t.in[11] 0
+set t.in[12] 0
+set t.in[13] 0
+set t.in[14] 0
+cycle
+mode run
+assert t.out 0

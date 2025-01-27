@@ -1,0 +1,73 @@
+watchall
+
+set-qdi-channel-neutral "b.in" 7
+set b.out.a 0
+set b.out.v 0
+set b.drop 0
+cycle
+
+mode run
+system "echo '[] Set reset 0'"
+status X
+set Reset 0
+cycle
+status X
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] Sending in valid data'"
+set-qdi-channel-valid "b.in" 7 45
+cycle
+assert-qdi-channel-valid "b.out" 7 45
+assert b.in.v 1
+cycle
+set b.out.a 1
+cycle
+assert b.in.a 1
+assert b.in.v 1
+
+system "echo '[] Removing data'"
+set-qdi-channel-neutral "b.in" 7
+cycle
+assert-qdi-channel-neutral "b.out" 7
+assert b.in.v 0
+set b.out.a 0
+cycle
+assert b.in.a 0
+
+system "echo '[] Sending in valid data'"
+set-qdi-channel-valid "b.in" 7 37
+cycle
+assert-qdi-channel-valid "b.out" 7 37
+assert b.in.v 1
+cycle
+set b.out.a 1
+cycle
+assert b.in.a 1
+assert b.in.v 1
+
+system "echo '[] Removing data'"
+set-qdi-channel-neutral "b.in" 7
+cycle
+assert-qdi-channel-neutral "b.out" 7
+assert b.in.v 0
+set b.out.a 0
+cycle
+assert b.in.a 0
+
+system "echo '[] Enabling drop'"
+set b.drop 1
+cycle
+system "echo '[] Sending in valid data'"
+set-qdi-channel-valid "b.in" 7 45
+cycle
+assert-qdi-channel-neutral "b.out" 7
+assert b.in.v 1
+assert b.in.a 1
+
+system "echo '[] Removing data'"
+set-qdi-channel-neutral "b.in" 7
+cycle
+assert-qdi-channel-neutral "b.out" 7
+assert b.in.v 0
+assert b.in.a 0

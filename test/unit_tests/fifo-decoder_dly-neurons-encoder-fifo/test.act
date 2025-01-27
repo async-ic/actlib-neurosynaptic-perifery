@@ -1,0 +1,77 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library.
+ * It's the testing facility for cell_lib_std.act
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)  
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+import "../../neurosynaptic_perifery/coders.act";
+import "../../neurosynaptic_perifery/primitives.act";
+
+import globals;
+import std::data;
+
+open std::data;
+
+open tmpl::neurosynaptic_perifery;
+
+defproc fifo_decoder_neurons_encoder_fifo (awMx1of2<7> in; awMx1of2<7> out; bool? dly_cfg[6]){
+    bool _reset_B; 
+    prs {
+        Reset => _reset_B-
+    }
+    power supply;
+    supply.vdd = Vdd;
+    supply.vss = GND;
+
+    pint NxC,NyC,Nx,Ny;
+    NxC = 4;
+    NyC = 3;
+    Nx = 1<<NxC;
+    Ny = 1<<NyC;
+
+    fifo<NxC + NyC,5> fifo_pre(.in = in, .reset_B = _reset_B, .supply = supply);
+    decoder_2d_dly<NxC,NyC,Nx,Ny,6> decoder(.in = fifo_pre.out, .dly_cfg = dly_cfg, 
+        .reset_B = _reset_B, .supply = supply);
+    and_grid<Nx, Ny> _and_grid(.inx = decoder.outx, .iny = decoder.outy, .supply = supply);
+    // Pretend that each "synapse" immediately makes its one neuron "spike".
+    // that is, connect the output of each encoder target to the decoder input.
+    nrn_hs_2d_array<Nx,Ny> neuron_grid(.reset_B = _reset_B, .supply = supply);
+    (i:Nx*Ny:
+        // Connect the output bool to the input req of each neuron handshaker
+        // Leave ack dangling.
+        neuron_grid.in[i].r = _and_grid.out[i];
+    )
+
+    encoder2d_simple<NxC,NyC,Nx,Ny,4> encoder(.inx = neuron_grid.outx, .iny = neuron_grid.outy,
+        .to_pd_x = neuron_grid.to_pd_x, .to_pd_y = neuron_grid.to_pd_y,
+        .reset_B = _reset_B, .supply = supply);
+
+    fifo<NxC + NyC,5> fifo_post(.in = encoder.out, .out = out, .reset_B = _reset_B, .supply = supply);
+
+}
+
+
+// fifo_decoder_neurons_encoder_fifo e;
+fifo_decoder_neurons_encoder_fifo e; 

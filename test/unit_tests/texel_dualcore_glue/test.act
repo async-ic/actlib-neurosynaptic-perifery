@@ -1,0 +1,198 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library.
+ * It's the testing facility for cell_lib_std.act
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)  
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+import "../../neurosynaptic_perifery/coders.act";
+import "../../neurosynaptic_perifery/primitives.act";
+import "../../neurosynaptic_perifery/chips.act";
+import "../../neurosynaptic_perifery/dummy.act";
+
+import globals;
+import std::data;
+
+open std::data;
+
+
+open tmpl::neurosynaptic_perifery;
+
+
+
+pint N_IN = 32;
+
+pint N_NRN_X = 15;
+pint N_NRN_Y = 6;
+pint NC_NRN_X = 4;
+pint NC_NRN_Y = 3;
+
+pint N_SYN_X = 15;
+pint N_SYN_Y = 348;
+pint NC_SYN_X = 4;
+pint NC_SYN_Y = 9;
+
+pint N_SYN_DLY_CFG = 4;
+pint N_BD_DLY_CFG = 4;
+pint N_BD_DLY_CFG2 = 2;
+
+pint N_NRN_MON_X = N_NRN_X*2; // [mon,kill]*N
+pint N_NRN_MON_Y = N_NRN_Y; // [mon]*N
+
+pint N_SYN_MON_X = N_SYN_X*4; // [mon, dev_mon, set, resetB]*N
+pint N_SYN_MON_Y = N_SYN_Y; //  [mon]*N
+
+pint N_MON_AMZO_PER_SYN = 5;
+pint N_MON_AMZO_PER_NRN = 3;
+
+pint N_FLAGS_PER_SYN = 5; // Syn: Must be at least 3 (since those ones have special safety)
+pint N_FLAGS_PER_NRN = 3; // and leq than the number of bits in a reg, since have presumed only needs one.
+
+pint N_BUFFERS = 3;
+
+pint N_LINE_PD_DLY = 2;
+
+pint REG_NCA = 6;
+pint REG_M = 1<<REG_NCA;
+pint REG_NCW = 23;
+
+
+defproc texel_dualcore_glue (bd<N_IN> in, out;
+
+    Mx1of2<REG_NCW> c1_reg_data[REG_M];
+
+    // a1of1 c1_synapses[N_SYN_X * N_SYN_Y];
+    // a1of1 c1_neurons[N_NRN_X * N_NRN_Y];
+
+    bool! c1_dec_req_x[N_SYN_X], c1_dec_req_y[N_SYN_Y];
+    bool? c1_dec_ackB[N_SYN_X];
+    a1of1 c1_syn_pu[N_SYN_X];
+
+    a1of1 c1_enc_inx[N_NRN_X], c1_enc_iny[N_NRN_Y];
+    a1of1 c1_nrn_pd_x[N_NRN_X], c1_nrn_pd_y[N_NRN_Y];
+    
+    bool! c1_nrn_mon_x[N_NRN_MON_X], c1_nrn_mon_y[N_NRN_MON_Y];
+    bool! c1_syn_mon_x[N_SYN_MON_X], c1_syn_mon_y[N_SYN_MON_Y];
+    bool? c1_syn_mon_AMZI[N_SYN_X * N_MON_AMZO_PER_SYN], c1_nrn_mon_AMZI[N_NRN_X * N_MON_AMZO_PER_NRN];
+    bool! c1_syn_mon_AMZO[N_MON_AMZO_PER_SYN], c1_nrn_mon_AMZO[N_MON_AMZO_PER_NRN];
+    bool! c1_syn_flags_EFO[N_FLAGS_PER_SYN], c1_nrn_flags_EFO[N_FLAGS_PER_NRN];
+
+    bool! c1_reset_nrn_hs_BO[N_NRN_X], c1_reset_syn_hs_BO[N_SYN_X],
+    c1_reset_nrn_stge_BO[N_NRN_X], c1_reset_syn_stge_BO[N_SYN_X];
+
+    Mx1of2<REG_NCW> c2_reg_data[REG_M];
+
+    // a1of1 c2_synapses[N_SYN_X * N_SYN_Y];
+    // a1of1 c2_neurons[N_NRN_X * N_NRN_Y];
+
+    bool! c2_dec_req_x[N_SYN_X], c2_dec_req_y[N_SYN_Y];
+    bool? c2_dec_ackB[N_SYN_X];
+    a1of1 c2_syn_pu[N_SYN_X];
+
+    a1of1 c2_enc_inx[N_NRN_X], c2_enc_iny[N_NRN_Y];
+    a1of1 c2_nrn_pd_x[N_NRN_X], c2_nrn_pd_y[N_NRN_Y];
+    
+    bool! c2_nrn_mon_x[N_NRN_MON_X], c2_nrn_mon_y[N_NRN_MON_Y];
+    bool! c2_syn_mon_x[N_SYN_MON_X], c2_syn_mon_y[N_SYN_MON_Y];
+    bool? c2_syn_mon_AMZI[N_SYN_X * N_MON_AMZO_PER_SYN], c2_nrn_mon_AMZI[N_NRN_X * N_MON_AMZO_PER_NRN];
+    bool! c2_syn_mon_AMZO[N_MON_AMZO_PER_SYN], c2_nrn_mon_AMZO[N_MON_AMZO_PER_NRN];
+    bool! c2_syn_flags_EFO[N_FLAGS_PER_SYN], c2_nrn_flags_EFO[N_FLAGS_PER_NRN];
+
+    bool! c2_reset_nrn_hs_BO[N_NRN_X], c2_reset_syn_hs_BO[N_SYN_X],
+    c2_reset_nrn_stge_BO[N_NRN_X], c2_reset_syn_stge_BO[N_SYN_X];
+
+    bool! reset_B, reset_reg_B, reset_syn_stge_BI;
+
+    bool? bd_dly_cfg[N_BD_DLY_CFG], bd_dly_cfg2[N_BD_DLY_CFG2];
+    bool? loopback_en){
+
+    bool _reset_B; 
+    prs {
+        Reset => _reset_B-
+    }
+    power supply;
+    supply.vdd = Vdd;
+    supply.vss = GND;
+
+    texel_dualcore<N_IN,
+    N_NRN_X, N_NRN_Y, N_SYN_X, N_SYN_Y,
+    NC_NRN_X, NC_NRN_Y, NC_SYN_X, NC_SYN_Y,
+    N_SYN_DLY_CFG,
+    N_NRN_MON_X, N_NRN_MON_Y, N_SYN_MON_X, N_SYN_MON_Y,
+    N_MON_AMZO_PER_SYN, N_MON_AMZO_PER_NRN,
+    N_FLAGS_PER_SYN, N_FLAGS_PER_NRN,
+    N_BUFFERS,
+    N_LINE_PD_DLY,
+    N_BD_DLY_CFG, N_BD_DLY_CFG2,
+    REG_NCA, REG_NCW, REG_M> c(.in = in, .out = out,
+        .c1_reg_data = c1_reg_data, .c1_dec_req_x = c1_dec_req_x, .c1_dec_req_y = c1_dec_req_y, .c1_dec_ackB = c1_dec_ackB, .c1_syn_pu = c1_syn_pu, .c1_enc_inx = c1_enc_inx, .c1_enc_iny = c1_enc_iny, .c1_nrn_pd_x = c1_nrn_pd_x, .c1_nrn_pd_y = c1_nrn_pd_y, .c1_nrn_mon_x = c1_nrn_mon_x, .c1_nrn_mon_y = c1_nrn_mon_y, .c1_syn_mon_x = c1_syn_mon_x, .c1_syn_mon_y = c1_syn_mon_y, .c1_syn_mon_AMZI = c1_syn_mon_AMZI, .c1_nrn_mon_AMZI = c1_nrn_mon_AMZI, .c1_syn_mon_AMZO = c1_syn_mon_AMZO, .c1_nrn_mon_AMZO = c1_nrn_mon_AMZO, .c1_syn_flags_EFO = c1_syn_flags_EFO, .c1_nrn_flags_EFO = c1_nrn_flags_EFO, .c1_reset_nrn_hs_BO = c1_reset_nrn_hs_BO, .c1_reset_syn_hs_BO = c1_reset_syn_hs_BO, .c1_reset_nrn_stge_BO = c1_reset_nrn_stge_BO, .c1_reset_syn_stge_BO = c1_reset_syn_stge_BO, .c2_reg_data = c2_reg_data, .c2_dec_req_x = c2_dec_req_x, .c2_dec_req_y = c2_dec_req_y, .c2_dec_ackB = c2_dec_ackB, .c2_syn_pu = c2_syn_pu, .c2_enc_inx = c2_enc_inx, .c2_enc_iny = c2_enc_iny, .c2_nrn_pd_x = c2_nrn_pd_x, .c2_nrn_pd_y = c2_nrn_pd_y, .c2_nrn_mon_x = c2_nrn_mon_x, .c2_nrn_mon_y = c2_nrn_mon_y, .c2_syn_mon_x = c2_syn_mon_x, .c2_syn_mon_y = c2_syn_mon_y, .c2_syn_mon_AMZI = c2_syn_mon_AMZI, .c2_nrn_mon_AMZI = c2_nrn_mon_AMZI, .c2_syn_mon_AMZO = c2_syn_mon_AMZO, .c2_nrn_mon_AMZO = c2_nrn_mon_AMZO, .c2_syn_flags_EFO = c2_syn_flags_EFO, .c2_nrn_flags_EFO = c2_nrn_flags_EFO, .c2_reset_nrn_hs_BO = c2_reset_nrn_hs_BO, .c2_reset_syn_hs_BO = c2_reset_syn_hs_BO, .c2_reset_nrn_stge_BO = c2_reset_nrn_stge_BO, .c2_reset_syn_stge_BO = c2_reset_syn_stge_BO,
+        .bd_dly_cfg = bd_dly_cfg, .bd_dly_cfg2 = bd_dly_cfg2,
+        .loopback_en = loopback_en,
+        // .reset_B = _reset_B, .reset_reg_B = _reset_B, .reset_syn_stge_BI = _reset_B,
+        .reset_B = reset_B, .reset_reg_B = reset_reg_B, .reset_syn_stge_BI = reset_syn_stge_BI, 
+        .supply = supply);
+
+    a1of1 c1_synapses[N_SYN_X * N_SYN_Y];
+    a1of1 c1_neurons[N_NRN_X * N_NRN_Y];
+    a1of1 c2_synapses[N_SYN_X * N_SYN_Y];
+    a1of1 c2_neurons[N_NRN_X * N_NRN_Y];
+
+
+    pint N_NRN = N_NRN_X * N_NRN_Y;
+    pint N_SYN_PER_NRN = (N_SYN_X * N_SYN_Y)/N_NRN;
+    dummy_neuron_core<N_SYN_PER_NRN, N_NRN, N_NRN_X> c1_dummy_neuron_core(.synapses = c1_synapses, .neurons = c1_neurons,
+        .supply = supply);
+    dummy_neuron_core<N_SYN_PER_NRN, N_NRN, N_NRN_X> c2_dummy_neuron_core(.synapses = c2_synapses, .neurons = c2_neurons,
+        .supply = supply);
+
+    decoder_2d_synapse_hs<N_SYN_X, N_SYN_Y> c1_syn_grid(
+        .synapses = c1_synapses,
+        .in_req_x = c1_dec_req_x, .in_req_y = c1_dec_req_y,
+        .to_pu = c1_syn_pu,
+        .out_ackB_decoder = c1_dec_ackB,
+        .supply = supply);
+
+    nrn_hs_2d_array<N_NRN_X,N_NRN_Y> c1_nrn_grid(.in = c1_neurons,
+        .outx = c1_enc_inx, .outy = c1_enc_iny,
+        .to_pd_x = c1_nrn_pd_x, .to_pd_y = c1_nrn_pd_y,
+        .supply = supply, .reset_B = _reset_B);
+
+    decoder_2d_synapse_hs<N_SYN_X, N_SYN_Y> c2_syn_grid(
+        .synapses = c2_synapses,
+        .in_req_x = c2_dec_req_x, .in_req_y = c2_dec_req_y,
+        .to_pu = c2_syn_pu,
+        .out_ackB_decoder = c2_dec_ackB,
+        .supply = supply);
+
+    nrn_hs_2d_array<N_NRN_X,N_NRN_Y> c2_nrn_grid(.in = c2_neurons,
+        .outx = c2_enc_inx, .outy = c2_enc_iny,
+        .to_pd_x = c2_nrn_pd_x, .to_pd_y = c2_nrn_pd_y,
+        .supply = supply, .reset_B = _reset_B);
+
+
+}
+
+
+// fifo_decoder_neurons_encoder_fifo e;
+texel_dualcore_glue c; 

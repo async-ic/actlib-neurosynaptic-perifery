@@ -1,0 +1,49 @@
+watchall
+system "echo '[0] code starts'"
+set t.in.r 0
+set t.out.a 0
+cycle
+set Reset 0
+cycle
+status X
+mode run
+set Reset 1
+cycle
+system "echo '[1] reset done'"
+system "echo '----------------------------------------------------------------------------------------------------'"
+set t.in.r 1
+cycle
+set t.in.r 0
+system "echo '1 bit inside'"
+set t.in.r 1
+cycle
+set t.in.r 0
+cycle
+system "echo '2 bit inside'"
+set t.in.r 1
+cycle
+set t.in.r 0
+cycle
+system "echo '3 bit inside'"
+set t.in.r 1
+cycle
+set t.in.r 0
+cycle
+system "echo '4 bit inside'"
+set t.in.r 1
+cycle
+set t.in.r 0
+cycle
+system "echo '5 bit inside'"
+set t.in.r 1
+cycle
+set t.in.r 0
+cycle
+system "echo '6 bit inside'"
+set t.in.r 1
+cycle
+set t.in.r 0
+cycle
+system "echo '7 bit inside'"
+assert t.out.r 1
+

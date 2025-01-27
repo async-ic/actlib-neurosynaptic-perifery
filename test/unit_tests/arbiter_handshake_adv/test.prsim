@@ -1,0 +1,45 @@
+watchall
+system "echo '[0] code starts'"
+set t.in1.r 0
+set t.in2.r 0
+set t.out.a 0
+set Reset 0
+cycle
+status X
+mode run
+set Reset 1
+cycle
+system "echo '[1] reset done'"
+system "echo '----------------------------------------------------------------------------------------------------'"
+set t.in1.r 1
+set t.in2.r 1
+cycle
+assert t.out.r 1
+set t.out.a 1
+system "echo '----------------------------------------------------------------------------------------------------'"
+system "echo '[2] 1 bit processed by the arbiter'"
+cycle
+set t.out.a 0
+cycle
+assert t.out.r 1
+set t.out.a 1
+set t.in1.r 0
+set t.in2.r 0
+system "echo '----------------------------------------------------------------------------------------------------'"
+system "echo '[3] 2 bit processed by the arbiter'"
+cycle
+set t.out.a 0
+set t.in1.r 1
+set t.in2.r 1
+cycle
+assert t.out.r 1
+set t.out.a 1
+system "echo '----------------------------------------------------------------------------------------------------'"
+system "echo '[4] 3 bit processed by the arbiter'"
+cycle
+set t.out.a 0
+cycle
+assert t.out.r 1
+set t.out.a 1
+system "echo '----------------------------------------------------------------------------------------------------'"
+system "echo '[5] 4 bit processed by the arbiter'"

@@ -1,0 +1,42 @@
+watchall
+
+set-qdi-channel-neutral "b.in" 8
+cycle
+
+
+mode run
+system "echo '[] Set reset 0'"
+status X
+set Reset 0
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] Sending in 127'"
+set-qdi-channel-valid "b.in" 8 255
+cycle
+assert b.in.a 1
+assert b.in.v 1
+assert-var-int "b.out" 7 127
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+assert-var-int "b.out" 7 127
+
+system "echo '[] Sending in 35'"
+set-qdi-channel-valid "b.in" 8 163
+cycle
+assert b.in.a 1
+assert b.in.v 1
+assert-var-int "b.out" 7 35
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "b.in" 8
+cycle
+assert b.in.a 0
+assert b.in.v 0
+assert-var-int "b.out" 7 35
+

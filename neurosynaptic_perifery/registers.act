@@ -1,0 +1,352 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ * 
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+
+import "../../neurosynaptic_perifery/cell_lib_async.act";
+import "../../neurosynaptic_perifery/cell_lib_std.act";
+import "../../neurosynaptic_perifery/treegates.act";
+import "../../neurosynaptic_perifery/primitives.act";
+import "../../neurosynaptic_perifery/coders.act";
+// import tmpl::neurosynaptic_perifery;
+// import tmpl::neurosynaptic_perifery;
+import std::channel;
+open std::channel;
+
+namespace tmpl {
+    namespace neurosynaptic_perifery {
+
+
+/**
+ * A single register made out of A cells.
+ * MSB is whether to read or write.
+ * Currently only handles writing.
+ * NOTE: this does not handle in.v properly, and instead has in.v = in.a
+ */
+ //@TODO Get rid of scarying warning
+export template<pint N>
+defproc register_acells_improved(awMx1of2<N+1> in; Mx1of2<N> out;
+    bool? reset_B; power supply) {
+
+bool _resetX[N], _reset_BX[N];
+bool _en, _enBX;
+bool _flush, _flushBX;
+bool _out_v, _out_vB;
+bool _w = in.d.d[N].t;
+
+INV_X2 out_val_inv(.a = _out_v, .y = _out_vB,
+    .vdd = supply.vdd, .vss= supply.vss);
+
+// Reset sigs
+INV_X1 reset_inv(.a = reset_B, .vdd = supply.vdd, .vss = supply.vss);
+sigbuf<N> reset_sb(.in = reset_inv.y, .out = _resetX, .supply = supply);
+sigbuf<N> resetB_sb(.in=reset_B, .out=_reset_BX, .supply = supply);
+
+A_2C1N_RB_X1 A_flush(.c1 = _en, .c2 = _out_v, .n1 = _w, .y = _flush,
+    .vdd = supply.vdd, .vss = supply.vss, .pr_B = _reset_BX[0], .sr_B = _reset_BX[0]);
+
+A_2C_X1 A_en(.c1  = _w, .c2 = _out_vB, .y = _en,
+    .vdd = supply.vdd, .vss = supply.vss);
+
+INV_X1 flush_inv(.a = _flush, .vdd = supply.vdd, .vss = supply.vss);
+sigbuf<N*2> sb_flushB(.in = flush_inv.y, .supply = supply);
+sb_flushB.out[0] = _flushBX;
+
+INV_X1 en_inv(.a = _en, .vdd = supply.vdd, .vss = supply.vss);
+sigbuf<N*2> sb_enB(.in = en_inv.y, .supply = supply);
+sb_enB.out[0] = _enBX;
+
+vtree<N> vc(.in = out, .out = _out_v, .supply = supply);
+
+// WARNING WARNING
+in.v = in.a;
+
+A_1C1P_X1 A_ack(.c1 = _en, .p1 = _out_vB, .y = in.a,
+    .vdd = supply.vdd, .vss = supply.vss);
+
+//function
+A_2C1N_SB_X4 f_buf_func[N];
+A_2C1N_RB_X4 t_buf_func[N];
+(i:N: 
+    f_buf_func[i].y=out.d[i].f;
+    t_buf_func[i].y=out.d[i].t;
+
+    f_buf_func[i].c1=_flushBX;
+    t_buf_func[i].c1=_flushBX;
+
+    f_buf_func[i].c2=_enBX;
+    t_buf_func[i].c2=_enBX;
+    
+    f_buf_func[i].n1=in.d.d[i].f;
+    t_buf_func[i].n1=in.d.d[i].t;
+
+    f_buf_func[i].vdd=supply.vdd;
+    t_buf_func[i].vdd=supply.vdd;
+    f_buf_func[i].vss=supply.vss;
+    t_buf_func[i].vss=supply.vss;
+    
+    f_buf_func[i].pr = _resetX[i];
+    f_buf_func[i].sr = _resetX[i];
+    t_buf_func[i].pr_B = _reset_BX[i];
+    t_buf_func[i].sr_B = _reset_BX[i];
+)
+
+}
+
+
+
+
+/** 
+ * Array of registers made out of A-cells
+ * params:
+ * NcW: number of bits in Words to be stored in buffers
+ * NcA: number of bits in Address
+ * M: number of registers.  M = 2^Nc_addr would be a natural choice.
+ * Input packets should be 
+ * [-addr-][-word-][r/w]
+ */
+export template<pint NcA, NcW, M>
+defproc register_wr_array(awMx1of2<NcA + NcW + 1> in; Mx1of2<NcW> data[M]; awMx1of2<NcA+NcW> out;
+    bool? reset_B; power supply) {
+
+
+// Input valid tree
+vtree<NcA + NcW + 1> input_valid(.in = in.d, .out = in.v,
+    .supply = supply);
+
+
+// Address decoder
+decoder_dualrail<NcA, M> decoder(.supply = supply);
+(i:NcA:
+    decoder.in.d[i] = in.d.d[i];
+)
+
+// OrTree over acks from all registers
+ortree<M> ack_ortree(.supply = supply);
+
+bool _write_ack;
+// C element handling in ack
+A_2C_B_X1 in_ack_Cel(.c1 = ack_ortree.out, .c2 = input_valid.out, .y = _write_ack,
+    .vss = supply.vss, .vdd = supply.vdd); 
+
+// Bit to join the acks either from read or write
+bool _read_ack;
+_read_ack = out.a;
+OR2_X1 ack_rw_or(.a = _read_ack, .b = _write_ack,
+    .vdd = supply.vdd, .vss = supply.vss);
+A_2C_B_X1 ack_safety(.c1 = ack_rw_or.y, .c2 = in.v, .y = in.a);
+
+// Write bit selector
+bool _w = in.d.d[NcA+NcW].t;
+bool _wX[M];
+sigbuf<M> _w_sb(.in = _w, .out = _wX, .supply = supply);
+A_2C_B_X1 write_selectors[M];
+(i:M:
+    write_selectors[i].c1 = _wX[i];
+    write_selectors[i].c2 = decoder.out[i];
+    write_selectors[i].vdd = supply.vdd;
+    write_selectors[i].vss = supply.vss;
+)
+
+
+// Registers
+register_acells_improved<NcW> registers[M];
+TIELO_X1 tielow_writebit_f[M];
+(i:M:
+    // Connect each register to word inputs.
+    (j:NcW:
+        registers[i].in.d.d[j] = in.d.d[j + NcA];
+    )
+
+    // Connect the (selected) write bit
+    registers[i].in.d.d[NcW].t = write_selectors[i].y;
+    tielow_writebit_f[i].vdd = supply.vdd;
+    tielow_writebit_f[i].vss = supply.vss;
+    registers[i].in.d.d[NcW].f = tielow_writebit_f[i].y;
+
+    // Connect to ack ortree
+    registers[i].in.a = ack_ortree.in[i];
+
+    // Connect outputs
+    data[i] = registers[i].out;
+
+    registers[i].supply = supply;
+    registers[i].reset_B = reset_B;
+)
+
+// Read bit selector
+bool _r = in.d.d[NcA+NcW].f;
+bool _rX[M+NcA];
+sigbuf<M+NcA> _r_sb(.in = _r, .out = _rX, .supply = supply);
+A_2C_B_X1 read_selectors[M];
+sigbuf_boolarray<M, NcW*2> read_selectorsX(.supply = supply);
+(i:M:
+    read_selectors[i].c1 = _rX[i];
+    read_selectors[i].c2 = decoder.out[i];
+    read_selectors[i].vdd = supply.vdd;
+    read_selectors[i].vss = supply.vss;
+
+    read_selectorsX.in[i] = read_selectors[i].y;
+)
+
+// OrTrees for each output word bit on read
+ortree<M> out_ortrees_t[NcW];
+ortree<M> out_ortrees_f[NcW];
+(i:NcW:
+    out_ortrees_t[i].out = out.d.d[i+NcA].t;
+    out_ortrees_f[i].out = out.d.d[i+NcA].f;
+
+    out_ortrees_t[i].supply = supply;
+    out_ortrees_f[i].supply = supply;
+)
+
+// ANDs over each reg's data
+// and whether it is selected for read.
+AND2_X1 and_reads_t[NcW * M];
+AND2_X1 and_reads_f[NcW * M];
+pint index;
+(i:NcW:
+    (j:M:
+        index = i + j*NcW;
+
+        and_reads_t[index].a = data[j].d[i].t;
+        and_reads_t[index].b = read_selectorsX.out[j];
+        and_reads_f[index].a = data[j].d[i].f;
+        and_reads_f[index].b = read_selectorsX.out[j];
+
+        and_reads_t[index].y = out_ortrees_t[i].in[j];
+        and_reads_f[index].y = out_ortrees_f[i].in[j];
+
+        and_reads_t[index].vss = supply.vss;
+        and_reads_t[index].vdd = supply.vdd;
+        and_reads_f[index].vss = supply.vss;
+        and_reads_f[index].vdd = supply.vdd;
+    )
+
+)
+
+// C elements passing address to out on read.
+A_2C_B_X1 addr_read_t[NcA];
+A_2C_B_X1 addr_read_f[NcA];
+(i:NcA:
+    addr_read_t[i].c1 = in.d.d[i].t;
+    addr_read_f[i].c1 = in.d.d[i].f;
+
+    addr_read_t[i].c2 = _rX[M+i];
+    addr_read_f[i].c2 = _rX[M+i];
+
+    addr_read_t[i].y = out.d.d[i].t;
+    addr_read_f[i].y = out.d.d[i].f;
+
+    addr_read_t[i].vdd = supply.vdd;
+    addr_read_t[i].vss = supply.vss;
+    addr_read_f[i].vdd = supply.vdd;
+    addr_read_f[i].vss = supply.vss;
+
+
+)
+
+
+
+}
+
+
+
+
+
+
+/** 
+ * Array of registers made out of A-cells.
+ * !!!Registers ONLY have write functionality!!!
+ * params:
+ * NcW: number of bits in Words to be stored in buffers
+ * NcA: number of bits in Address
+ * M: number of registers.  M = 2^Nc_addr would be a natural choice.
+ * Input packets should be 
+ * LSB [-addr-][-word-] MSB
+ */
+ //@TODO check if it is used
+export template<pint NcA, NcW, M>
+defproc register_w_array(awMx1of2<NcA + NcW> in; Mx1of2<NcW> data[M]; awMx1of2<NcA+NcW> out;
+    bool? reset_B; power supply) {
+
+
+// Input valid tree
+vtree<NcA + NcW> input_valid(.in = in.d, .out = in.v,
+    .supply = supply);
+
+
+// Address decoder
+decoder_dualrail<NcA, M> decoder(.supply = supply);
+(i:NcA:
+    decoder.in.d[i] = in.d.d[i];
+)
+
+// OrTree over acks from all registers
+ortree<M> ack_ortree(.supply = supply);
+
+bool _write_ack;
+// C element handling in ack
+A_2C_B_X1 in_ack_Cel(.c1 = ack_ortree.out, .c2 = input_valid.out, .y = _write_ack,
+    .vss = supply.vss, .vdd = supply.vdd); 
+
+A_2C_B_X1 ack_safety(.c1 = _write_ack, .c2 = in.v, .y = in.a);
+
+
+// Registers
+register_acells_improved<NcW> registers[M];
+TIELO_X1 tielow_writebit_f[M];
+(i:M:
+    // Connect each register to word inputs.
+    (j:NcW:
+        registers[i].in.d.d[j] = in.d.d[j + NcA];
+    )
+
+    // Connect the (selected) write bit
+    registers[i].in.d.d[NcW].t = decoder.out[i];
+    tielow_writebit_f[i].vdd = supply.vdd;
+    tielow_writebit_f[i].vss = supply.vss;
+    registers[i].in.d.d[NcW].f = tielow_writebit_f[i].y;
+
+    // Connect to ack ortree
+    registers[i].in.a = ack_ortree.in[i];
+
+    // Connect outputs
+    data[i] = registers[i].out;
+
+    registers[i].supply = supply;
+    registers[i].reset_B = reset_B;
+)
+
+
+}
+
+
+
+
+}}
+

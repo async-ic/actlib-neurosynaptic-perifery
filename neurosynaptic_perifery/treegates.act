@@ -1,0 +1,454 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark) 
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen) 
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2021 Rajit Manohar 
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************/
+import "../../neurosynaptic_perifery/cell_lib_async.act";
+import "../../neurosynaptic_perifery/cell_lib_std.act";
+
+import std::channel;
+open std::channel;
+namespace tmpl {
+  namespace neurosynaptic_perifery {
+
+/*
+ * Build an OR-gate tree (NOR/NAND/optional INV)
+ */
+
+
+                
+export deftype power (bool?! vdd, vss) { }
+
+
+export template<pint N>
+defproc ortree (bool? in[N]; bool! out; power supply)
+{
+  bool tout;
+
+  { N > 0 : "What?" };
+
+  [N = 1 -> BUF_X1 b(.vss=supply.vss, .vdd = supply.vdd, .a = in[0], .y = out);
+  []  N > 1 ->
+
+  pint i, end, j;
+  i = 0;
+  end = N-1;
+
+  pint lenTree2Count, lenTree3Count;
+  lenTree2Count = 0;
+  lenTree3Count = 0;
+    /* Pre"calculate" the number of C cells required, look below if confused */
+  *[ i != end ->
+     j = 0;
+     *[ i < end ->
+        j = j + 1;
+        [ i+1 >= end ->
+          i = end;
+          lenTree2Count = lenTree2Count +1;
+        [] i+2 >= end ->
+          i = end;
+          lenTree3Count = lenTree3Count +1;
+        [] else ->
+          i = i + 2;
+          lenTree2Count = lenTree2Count +1;
+        ]
+      ]
+      /*-- update range that has to be combined --*/
+      i = end+1;
+      end = end+j;
+      j = 0;
+  ]
+
+  /* array that holds ALL the nodes in the completion tree */
+  bool tmp[end+1];
+  (k:N:tmp[k] = in[k];)
+
+  /* array to hold the actual C-elments, either A2C or A3C */
+  
+  [lenTree2Count > 0 ->
+    OR2_X1 or2s[lenTree2Count];
+  ]
+  
+  [lenTree3Count > 0 ->
+    OR3_X1 or3s[lenTree3Count];
+  ]
+  
+  (h:lenTree2Count:or2s[h].vdd = supply.vdd;)
+  (h:lenTree3Count:or3s[h].vdd = supply.vdd;)
+
+  (h:lenTree2Count:or2s[h].vss = supply.vss;)
+  (h:lenTree3Count:or3s[h].vss = supply.vss;)
+
+  /* Reset the variables we just stole lol */
+  i = 0;
+  end = N-1;
+  j = 0;
+  pint tree2Index = 0;
+  pint tree3Index = 0;
+
+  /* Invariant: i <= end */
+    
+  *[ i != end ->
+     /* 
+      * Invariant: tmp[i..end] has the current signals that need to be
+      * combined together, and "isinv" specifies if they are the inverted
+      * sense or not
+      */
+     j = 0;
+     *[ i < end ->
+        /*-- there are still signals that need to be combined --*/
+        j = j + 1;
+        [ i+1 >= end ->
+          /*-- last piece: use either a 2 input C-element --*/
+          or2s[tree2Index].a = tmp[i];
+          or2s[tree2Index].b = tmp[i+1];
+          or2s[tree2Index].y = tmp[end+j];
+          tree2Index = tree2Index +1;
+          i = end;
+        [] i+2 >= end ->
+          /*-- last piece: use either a 3 input C-element --*/
+          or3s[tree3Index].a = tmp[i];
+          or3s[tree3Index].b = tmp[i+1];
+          or3s[tree3Index].c = tmp[i+2];
+          or3s[tree3Index].y = tmp[end+j];
+
+          tree3Index = tree3Index +1;
+          i = end;
+        [] else ->
+          /*-- more to come; so use a two input C-element --*/
+          or2s[tree2Index].a = tmp[i];
+          or2s[tree2Index].b = tmp[i+1];
+          or2s[tree2Index].y = tmp[end+j];
+          tree2Index = tree2Index +1;
+          i = i + 2;
+        ]
+      ]
+      /*-- update range that has to be combined --*/
+      i = end+1;
+      end = end+j;
+      j = 0;
+  ]
+  
+    out = tmp[end];
+
+  ]
+}
+
+export template<pint N>
+defproc andtree (bool? in[N]; bool! out; power supply)
+{
+  bool tout;
+
+  { N > 0 : "What?" };
+
+
+
+  [N = 1 -> BUF_X1 b(.vss=supply.vss, .vdd = supply.vdd, .a = in[0], .y = out);
+  []  N > 1 ->
+
+  pint i, end, j;
+  i = 0;
+  end = N-1;
+
+  pint lenTree2Count, lenTree3Count;
+  lenTree2Count = 0;
+  lenTree3Count = 0;
+    /* Pre"calculate" the number of C cells required, look below if confused */
+  *[ i != end ->
+     j = 0;
+     *[ i < end ->
+        j = j + 1;
+        [ i+1 >= end ->
+          i = end;
+          lenTree2Count = lenTree2Count +1;
+        [] i+2 >= end ->
+          i = end;
+          lenTree3Count = lenTree3Count +1;
+        [] else ->
+          i = i + 2;
+          lenTree2Count = lenTree2Count +1;
+        ]
+      ]
+      /*-- update range that has to be combined --*/
+      i = end+1;
+      end = end+j;
+      j = 0;
+  ]
+
+  /* array that holds ALL the nodes in the completion tree */
+  bool tmp[end+1];
+  (k:N:tmp[k] = in[k];)
+
+  /* array to hold the actual C-elments, either A2C or A3C */
+  
+    [lenTree2Count > 0 ->
+    AND2_X1 and2s[lenTree2Count];
+  ]
+  
+  [lenTree3Count > 0 ->
+     AND3_X1 and3s[lenTree3Count];
+  ]
+  
+  (h:lenTree2Count:and2s[h].vdd = supply.vdd;)
+  (h:lenTree3Count:and3s[h].vdd = supply.vdd;)
+
+  (h:lenTree2Count:and2s[h].vss = supply.vss;)
+  (h:lenTree3Count:and3s[h].vss = supply.vss;)
+
+  /* Reset the variables we just stole lol */
+  i = 0;
+  end = N-1;
+  j = 0;
+  pint tree2Index = 0;
+  pint tree3Index = 0;
+
+  /* Invariant: i <= end */
+    
+  *[ i != end ->
+     /* 
+      * Invariant: tmp[i..end] has the current signals that need to be
+      * combined together, and "isinv" specifies if they are the inverted
+      * sense or not
+      */
+     j = 0;
+     *[ i < end ->
+        /*-- there are still signals that need to be combined --*/
+        j = j + 1;
+        [ i+1 >= end ->
+          /*-- last piece: use either a 2 input C-element --*/
+          and2s[tree2Index].a = tmp[i];
+          and2s[tree2Index].b = tmp[i+1];
+          and2s[tree2Index].y = tmp[end+j];
+          tree2Index = tree2Index +1;
+          i = end;
+        [] i+2 >= end ->
+          /*-- last piece: use either a 3 input C-element --*/
+          and3s[tree3Index].a = tmp[i];
+          and3s[tree3Index].b = tmp[i+1];
+          and3s[tree3Index].c = tmp[i+2];
+          and3s[tree3Index].y = tmp[end+j];
+
+          tree3Index = tree3Index +1;
+          i = end;
+        [] else ->
+          /*-- more to come; so use a two input C-element --*/
+          and2s[tree2Index].a = tmp[i];
+          and2s[tree2Index].b = tmp[i+1];
+          and2s[tree2Index].y = tmp[end+j];
+          tree2Index = tree2Index +1;
+          i = i + 2;
+        ]
+      ]
+      /*-- update range that has to be combined --*/
+      i = end+1;
+      end = end+j;
+      j = 0;
+  ]
+  
+    out = tmp[end];
+
+  ]
+}
+  
+/*
+ * Build a completion tree using a combination of 2-input and 3-input
+ * C-elements 
+ */
+export template<pint N>
+defproc ctree (bool? in[N]; bool! out; power supply)
+{
+  bool tout;
+
+  { N > 0 : "What?" };
+
+  bool meaningless_var;
+
+  [N = 1 -> BUF_X1 b(.vss=supply.vss, .vdd = supply.vdd, .a = in[0], .y = out);
+  []  N > 1 ->
+  pint i, end, j;
+  i = 0;
+  end = N-1;
+
+  pint lenTree2Count, lenTree3Count;
+  lenTree2Count = 0;
+  lenTree3Count = 0;
+  /* Pre"calculate" the number of C cells required, look below if confused */
+  *[ i != end ->
+     j = 0;
+     *[ i < end ->
+        j = j + 1;
+        [ i+1 >= end ->
+          i = end;
+          lenTree2Count = lenTree2Count +1;
+        [] i+2 >= end ->
+          i = end;
+          lenTree3Count = lenTree3Count +1;
+        [] else ->
+          i = i + 2;
+          lenTree2Count = lenTree2Count +1;
+        ]
+      ]
+      /*-- update range that has to be combined --*/
+      i = end+1;
+      end = end+j;
+  ]
+
+  /* array that holds ALL the nodes in the completion tree */
+  bool tmp[end+1];
+  
+  // Connecting the first nodes to the input
+  (l:N:
+    tmp[l] = in[l];
+    )
+
+  /* array to hold the actual C-elments, either A2C or A3C */
+  [lenTree2Count > 0 ->
+    A_2C_B_X1 C2Els[lenTree2Count];
+  ]
+  
+  [lenTree3Count > 0 ->
+     A_3C_B_X1 C3Els[lenTree3Count];
+  ]
+  
+
+  (h:lenTree2Count:C2Els[h].vdd = supply.vdd;)
+  (h:lenTree3Count:C3Els[h].vdd = supply.vdd;)
+
+  (h:lenTree2Count:C2Els[h].vss = supply.vss;)
+  (h:lenTree3Count:C3Els[h].vss = supply.vss;)
+
+  /* Reset the variables we just stole lol */
+  i = 0;
+  end = N-1;
+  j = 0;
+  pint tree2Index = 0;
+  pint tree3Index = 0;
+
+  /* Invariant: i <= end */
+    
+  *[ i != end ->
+     /* 
+      * Invariant: tmp[i..end] has the current signals that need to be
+      * combined together, and "isinv" specifies if they are the inverted
+      * sense or not
+      */
+     j = 0;
+     *[ i < end ->
+        /*-- there are still signals that need to be combined --*/
+        j = j + 1;
+        [ i+1 >= end ->
+          /*-- last piece: use either a 2 input C-element --*/
+          C2Els[tree2Index].c1 = tmp[i];
+          C2Els[tree2Index].c2 = tmp[i+1];
+          C2Els[tree2Index].y = tmp[end+j];
+          tree2Index = tree2Index +1;
+          i = end;
+        [] i+2 >= end ->
+          /*-- last piece: use either a 3 input C-element --*/
+          C3Els[tree3Index].c1 = tmp[i];
+          C3Els[tree3Index].c2 = tmp[i+1];
+          C3Els[tree3Index].c3 = tmp[i+2];
+          C3Els[tree3Index].y = tmp[end+j];
+
+          tree3Index = tree3Index +1;
+          i = end;
+        [] else ->
+          /*-- more to come; so use a two input C-element --*/
+          C2Els[tree2Index].c1 = tmp[i];
+          C2Els[tree2Index].c2 = tmp[i+1];
+          C2Els[tree2Index].y = tmp[end+j];
+          tree2Index = tree2Index +1;
+          i = i + 2;
+        ]
+      ]
+      /*-- update range that has to be combined --*/
+      i = end+1;
+      end = end+j;
+      j = 0;
+  ]
+  
+  out = tmp[end];
+
+
+    ]
+
+  
+  
+}
+
+export template<pint N>
+defproc vtree (std::data::Mx1of2?<N> in; bool! out; power supply)
+{
+    // OR layer for making OR between true and false of in (they are then sent to Ctree)
+    OR2_X1 OR2_tf[N];
+    ctree<N> ct;
+  (l:N:
+      OR2_tf[l].a = in.d[l].t;
+      OR2_tf[l].b = in.d[l].f;
+      OR2_tf[l].y = ct.in[l];
+      OR2_tf[l].vdd = supply.vdd;
+      OR2_tf[l].vss = supply.vss;
+  )
+  ct.supply = supply;
+  out = ct.out;
+}
+export template<pint N>
+defproc sigbuf (bool? in; bool! out[N]; power supply)
+{
+
+  { N >= 0 : "sigbuf: parameter error" };
+//  { N <= 43 : "sigbuf: parameter error, N too big" };
+
+	  /* -- just use in sized driver here -- */
+    [ N <= 4 ->
+    BUF_X1 buf1 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+    [] N >= 5 & N <= 7 -> 
+    BUF_X2 buf2 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+    [] N >= 8 & N <= 10 -> 
+    BUF_X3 buf3 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+   [] N >= 11 & N <= 14 -> 
+    BUF_X4 buf4 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+   [] N >= 15 & N <= 18 -> 
+    BUF_X6 buf6 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+   [] N >= 19 & N <= 29 -> 
+    BUF_X8 buf8 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+   [] N >= 30 & N<= 48-> 
+    BUF_X12 buf12 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+   [] N >= 49 & N <= 64 -> 
+    BUF_X16 buf16 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+   [] N >= 65 & N <= 96 -> 
+    BUF_X24 buf24 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+   [] N >= 97 -> 
+    BUF_X32 buf32 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+  //  [] N >= 129 & N <=192 -> 
+  //   BUF_X48 buf48 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+  // [] N >= 193 & N <= 256-> 
+  //   BUF_X64 buf64 (.a = in, .y = out[0], .vdd = supply.vdd, .vss = supply.vss);
+   ]
+   (i:1..N-1:out[i]=out[0];)
+}
+
+
+}}
+

@@ -1,0 +1,479 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ * 
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+
+import "../../neurosynaptic_perifery/cell_lib_async.act";
+import "../../neurosynaptic_perifery/cell_lib_std.act";
+import "../../neurosynaptic_perifery/treegates.act";
+import "../../neurosynaptic_perifery/primitives.act";
+import "../../neurosynaptic_perifery/registers.act";
+import "../../neurosynaptic_perifery/coders.act";
+import "../../neurosynaptic_perifery/interfaces.act";
+// import tmpl::neurosynaptic_perifery;
+// import tmpl::neurosynaptic_perifery;
+import std::channel;
+open std::channel;
+
+namespace tmpl {
+    namespace neurosynaptic_perifery {
+
+
+export template<pint N_IN,  // Size of input data from outside world
+N_NRN_X, N_NRN_Y, N_SYN_X, N_SYN_Y, // Number of neurons / synapses
+NC_NRN_X, NC_NRN_Y, NC_SYN_X, NC_SYN_Y,
+N_SYN_DLY_CFG,
+N_NRN_MON_X, N_NRN_MON_Y, N_SYN_MON_X, N_SYN_MON_Y,
+N_MON_AMZO_PER_SYN, N_MON_AMZO_PER_NRN, // Number of signals that each synapse outputs to be monitored.
+N_FLAGS_PER_SYN, N_FLAGS_PER_NRN, // Number of signals that each nrn/syn recieves from the register.
+N_BUFFERS,
+N_LINE_PD_DLY, // Number of dummy delays to add line pull down
+REG_NCA, REG_NCW, REG_M>
+
+defproc texel_core (awMx1of2<N_IN> in, out;
+    Mx1of2<REG_NCW> reg_data[REG_M];
+
+    // Dummy synapses and neurons in the handshake blocks
+    // should be removed pre-innovus, else they are floating.
+    // a1of1 synapses[N_SYN_X * N_SYN_Y];
+    // a1of1 neurons[N_NRN_X * N_NRN_Y];
+
+    // Synapse decoder stuff
+    // The analogue core and connects to these to replace the above synapses.
+    bool! dec_req_x[N_SYN_X], dec_req_y[N_SYN_Y];
+    bool? dec_ackB[N_SYN_X];
+    a1of1 syn_pu[N_SYN_X];
+
+    // Neuron encoder stuff
+    a1of1 enc_inx[N_NRN_X], enc_iny[N_NRN_Y];
+    a1of1 nrn_pd_x[N_NRN_X], nrn_pd_y[N_NRN_Y];
+
+    // Monitors and flags to/from core, and selected mon out.
+    bool! nrn_mon_x[N_NRN_MON_X], nrn_mon_y[N_NRN_MON_Y];
+    bool! syn_mon_x[N_SYN_MON_X], syn_mon_y[N_SYN_MON_Y];
+    bool? syn_mon_AMZI[N_SYN_X * N_MON_AMZO_PER_SYN], nrn_mon_AMZI[N_NRN_X * N_MON_AMZO_PER_NRN];
+    bool! syn_mon_AMZO[N_MON_AMZO_PER_SYN], nrn_mon_AMZO[N_MON_AMZO_PER_NRN];
+    bool! syn_flags_EFO[N_FLAGS_PER_SYN], nrn_flags_EFO[N_FLAGS_PER_NRN];
+
+    power supply;
+    bool? reset_B, reset_reg_B, reset_syn_stge_BI;
+    bool! reset_nrn_hs_BO[N_NRN_X], reset_syn_hs_BO[N_SYN_X],
+    reset_nrn_stge_BO[N_NRN_X], reset_syn_stge_BO[N_SYN_X]){
+
+    bool _reset_BX;
+    BUF_X12 reset_buf(.a = reset_B, .y = _reset_BX, .vdd = supply.vdd, .vss = supply.vss);
+
+    pint index = 0; // Just useful
+
+    // Onwards
+    fifo<N_IN,N_BUFFERS> fifo_in(.in = in, .reset_B = _reset_BX, .supply = supply);
+    demux_bit_msb<N_IN-1> _demux(.in = fifo_in.out, .reset_B = _reset_BX, .supply = supply);
+
+    // Register
+    fifo<N_IN-1,N_BUFFERS> fifo_dmx2reg(.in = _demux.out2, .reset_B = _reset_BX, .supply = supply);
+    register_wr_array<REG_NCA, REG_NCW, REG_M> register(.in = fifo_dmx2reg.out, .data = reg_data,
+        .supply = supply, .reset_B = reset_reg_B);
+    fifo<N_IN-2,N_BUFFERS> fifo_reg2mrg(.in = register.out, .reset_B = _reset_BX, .supply = supply);
+
+
+    // Spike Decoder
+    pint NC_SYN;
+    NC_SYN = NC_SYN_X + NC_SYN_Y;
+    slice_data<N_IN-1, 0, NC_SYN> slice_pre_dec(.in = _demux.out1, .supply = supply);
+    fifo<NC_SYN,N_BUFFERS> fifo_dmx2dec(.in = slice_pre_dec.out, .reset_B = _reset_BX, .supply = supply);
+    decoder_2d_hybrid<NC_SYN_X, NC_SYN_Y, N_SYN_X, N_SYN_Y, N_SYN_DLY_CFG> decoder(.in = fifo_dmx2dec.out,
+        .hs_en = register.data[0].d[0].t, // Defaults to handshake disable
+        .ack_disable = register.data[1].d[2].t, // Defaults to ack enabled
+        .out_req_x = dec_req_x, .out_req_y = dec_req_y,
+        .to_pu = syn_pu,
+        .in_ackB_decoder = dec_ackB,
+        .supply = supply, .reset_B = _reset_BX);
+    INV_X1 dly_cfg_inverters[N_SYN_DLY_CFG]; 
+    (i:N_SYN_DLY_CFG:
+        dly_cfg_inverters[i].a = register.data[0].d[1+i].t; // iff t is high, is the delay disabled.
+        dly_cfg_inverters[i].vdd = supply.vdd;
+        dly_cfg_inverters[i].vss = supply.vss;
+        decoder.dly_cfg[i] = dly_cfg_inverters[i].y;
+    )
+
+    // Synapse handshake circuits, to be removed for innovus
+    // decoder_2d_synapse_hs<N_SYN_X, N_SYN_Y> _synapses(
+    //     .synapses = synapses,
+    //     .in_req_x = dec_req_x, .in_req_y = dec_req_y,
+    //     .to_pu = syn_pu,
+    //     .out_ackB_decoder = dec_ackB,
+    //     .supply = supply);
+
+    // Neurons + encoder
+    pint NC_NRN;
+    NC_NRN = NC_NRN_X + NC_NRN_Y;
+    encoder2d_simple<NC_NRN_X, NC_NRN_Y, N_NRN_X, N_NRN_Y, N_LINE_PD_DLY> encoder(
+        .inx = enc_inx, .iny = enc_iny,
+        .reset_B = _reset_BX, .supply = supply,
+        .to_pd_x = nrn_pd_x, .to_pd_y = nrn_pd_y);
+    fifo<NC_NRN, N_BUFFERS> fifo_enc2mrg(.in = encoder.out,
+        .reset_B = _reset_BX, .supply = supply);
+
+    // Neuron handshake circuits, to be removed for innovus
+    // nrn_hs_2d_array<N_NRN_X,N_NRN_Y> nrn_grid(.in = neurons,
+    //     .outx = enc_inx, .outy = enc_iny,
+    //     .to_pd_x = nrn_pd_x, .to_pd_y = nrn_pd_y,
+    //     .supply = supply, .reset_B = _reset_BX);
+
+
+
+    // Merge
+    append<NC_NRN, N_IN-NC_NRN, 0> append_enc(.in = fifo_enc2mrg.out, .supply = supply);
+    append<N_IN-2, 2, 2> append_reg(.in = fifo_reg2mrg.out, .supply = supply);
+    merge<N_IN> merge_enc8reg(.in1 = append_enc.out, .in2 = append_reg.out,
+        .supply = supply, .reset_B = _reset_BX);
+
+
+    // Output
+    fifo<N_IN, N_BUFFERS> fifo_out(.in = merge_enc8reg.out, .out = out,
+        .reset_B = _reset_BX, .supply = supply);
+
+
+    // Neuron/synapse monitor targeters
+    pint NC_NRN_MON_X = std::ceil_log2(N_NRN_MON_X);
+    pint NC_NRN_MON_Y = std::ceil_log2(N_NRN_MON_Y);
+    pint NC_SYN_MON_X = std::ceil_log2(N_SYN_MON_X);
+    pint NC_SYN_MON_Y = std::ceil_log2(N_SYN_MON_Y);
+
+    decoder_dualrail_en<NC_NRN_MON_X, N_NRN_MON_X> nrn_mon_dec_x(.supply = supply);
+    nrn_mon_dec_x.en = register.data[1].d[0].t;
+    (i:NC_NRN_MON_X:
+        nrn_mon_dec_x.in.d[i] = register.data[2].d[i];
+    )
+    sigbuf_boolarray<N_NRN_MON_X, 13> nrn_mon_x_buf(.in = nrn_mon_dec_x.out, .out = nrn_mon_x, .supply = supply);
+
+    decoder_dualrail_en<NC_NRN_MON_Y, N_NRN_MON_Y> nrn_mon_dec_y(.supply = supply);
+    nrn_mon_dec_y.en = register.data[1].d[0].t;
+    (i:NC_NRN_MON_Y:
+        nrn_mon_dec_y.in.d[i] = register.data[2].d[i+NC_NRN_MON_X];
+    )
+    sigbuf_boolarray<N_NRN_MON_Y, 48> nrn_mon_y_buf(.in = nrn_mon_dec_y.out, .out = nrn_mon_y, .supply = supply);
+
+    decoder_dualrail_en<NC_SYN_MON_X, N_SYN_MON_X> syn_mon_dec_x(
+        .supply = supply);
+    syn_mon_dec_x.en = register.data[1].d[1].t;
+    (i:NC_SYN_MON_X:
+        syn_mon_dec_x.in.d[i] = register.data[3].d[i];
+    )
+    sigbuf_boolarray<N_SYN_MON_X, 13> syn_mon_x_buf(.out = syn_mon_x, .supply = supply);
+
+    decoder_dualrail_en<NC_SYN_MON_Y, N_SYN_MON_Y> syn_mon_dec_y(.supply = supply);
+    syn_mon_dec_y.en = register.data[1].d[1].t;
+    (i:NC_SYN_MON_Y:
+        syn_mon_dec_y.in.d[i] = register.data[3].d[i+NC_SYN_MON_X];
+    )
+    sigbuf_boolarray<N_SYN_MON_Y, 48> syn_mon_y_buf(.out = syn_mon_y, .in = syn_mon_dec_y.out, .supply = supply);
+
+    // Device debug hard-wired safety (reg0, b05 = DEV_DEBUG)
+    // Stops the possibility of dev_mon being high while some other sig is high.
+    // Otherwise boom.
+    // Also the 4th monitor line to each synapse is active LOW, needs inverter.
+    bool DEV_DEBUG;
+    pint NSMX4 = N_SYN_MON_X/4; // Self explanatory
+    sigbuf<std::max(NSMX4,4)> sb_DEV_DEBUG(.in = register.data[0].d[5].t,
+        .supply = supply);
+    DEV_DEBUG = sb_DEV_DEBUG.out[0];
+    INV_X1 syn_targ_set_high_inv[NSMX4];
+    [NSMX4 >= 1 ->
+        AND2_X1 ands_devmon[NSMX4];
+        (i:NSMX4:
+            ands_devmon[i].a = syn_mon_dec_x.out[1+i*4];
+            ands_devmon[i].b = DEV_DEBUG;
+            ands_devmon[i].y = syn_mon_x_buf.in[1+i*4];
+            ands_devmon[i].vdd = supply.vdd;
+            ands_devmon[i].vss = supply.vss;
+
+            syn_targ_set_high_inv[i].a = syn_mon_dec_x.out[3+i*4];
+            syn_targ_set_high_inv[i].y = syn_mon_x_buf.in[3+i*4];
+            syn_targ_set_high_inv[i].vdd = supply.vdd;
+            syn_targ_set_high_inv[i].vss = supply.vss;
+
+        )
+        // Wire up the remaining lines.
+        (i:N_SYN_MON_X:
+            [(~(i%4 = 1)) & (~(i%4=3))->
+                syn_mon_x_buf.in[i] = syn_mon_dec_x.out[i];
+            ]
+        )
+    ]
+
+    // Create TBUFs for each synapse column,
+    // ctrl wired to mon line (first in each 4).
+    TBUF_X4 syn_x_AMZI_tbuf[N_SYN_X * N_MON_AMZO_PER_SYN];
+    KEEP syn_AMZO_keeps[N_MON_AMZO_PER_SYN];
+    sigbuf_boolarray<N_MON_AMZO_PER_SYN, 40> syn_mon_AMZO_sb(.out = syn_mon_AMZO, .supply = supply);
+    (j:N_MON_AMZO_PER_SYN:
+        (i:N_SYN_X:
+            index = i*N_MON_AMZO_PER_SYN + j;
+            syn_x_AMZI_tbuf[index].a = syn_mon_AMZI[index];
+            syn_x_AMZI_tbuf[index].en = syn_mon_x[i*4];
+            syn_x_AMZI_tbuf[index].y = syn_mon_AMZO_sb.in[j];
+        )
+
+        syn_AMZO_keeps[j].y = syn_mon_AMZO_sb.in[j];
+        syn_AMZO_keeps[j].vdd = supply.vdd;
+        syn_AMZO_keeps[j].vss = supply.vss;
+
+    )
+
+
+    // Create TBUFs for each neuron column, and add keeps.
+    // ctrl wired to mon line (first in each 4).
+    TBUF_X4 nrn_x_AMZI_tbuf[N_NRN_X * N_MON_AMZO_PER_NRN];
+    KEEP nrn_AMZO_keeps[N_MON_AMZO_PER_NRN];
+    sigbuf_boolarray<N_MON_AMZO_PER_NRN, 40> nrn_mon_AMZO_sb(.out = nrn_mon_AMZO, .supply = supply); 
+    (j:N_MON_AMZO_PER_NRN:
+        (i:N_NRN_X:
+            index = i*N_MON_AMZO_PER_NRN + j;
+            nrn_x_AMZI_tbuf[index].a = nrn_mon_AMZI[index];
+            nrn_x_AMZI_tbuf[index].en = nrn_mon_x[i*2];
+            nrn_x_AMZI_tbuf[index].y = nrn_mon_AMZO_sb.in[j];
+        )
+
+        nrn_AMZO_keeps[j].y = nrn_mon_AMZO_sb.in[j];
+        nrn_AMZO_keeps[j].vdd = supply.vdd;
+        nrn_AMZO_keeps[j].vss = supply.vss;
+
+    )
+
+    // Create buffered signals from register to nrns.
+    sigbuf_boolarray<N_FLAGS_PER_NRN, 31> sb_nrn_EFO(.out = nrn_flags_EFO, .supply = supply);
+    (i:N_FLAGS_PER_NRN:
+        sb_nrn_EFO.in[i] = register.data[5].d[i].t;
+    )
+
+    // Create  buffered signals from register to synapses.
+    // Includes safety on the first 3 flags with dev mon.
+    sigbuf_boolarray<N_FLAGS_PER_SYN, 31> sb_syn_EFO(.out = syn_flags_EFO, .supply = supply);
+    (i:3..N_FLAGS_PER_SYN-1:
+        sb_syn_EFO.in[i] = register.data[4].d[i].t;
+    )  
+    AND2_X1 syn_flags_dev_safety[3];
+    (i:0..2:
+        syn_flags_dev_safety[i].a = register.data[4].d[i].t; // syn flag bit
+        syn_flags_dev_safety[i].b = register.data[0].d[5].f; // no device is being monitored.
+        sb_syn_EFO.in[i] = syn_flags_dev_safety[i].y;
+
+        syn_flags_dev_safety[i].vdd = supply.vdd;
+        syn_flags_dev_safety[i].vss = supply.vss;
+    )
+
+    // Create non-buffered reset signals for the neuron/syn handshakes
+    // Since sigs are buffered before each neuron.
+    sigbuf<N_SYN_X> rsb_syn_hs(.in = _reset_BX, .out = reset_syn_hs_BO, .supply = supply);
+    sigbuf<N_NRN_X> rsb_nrn_hs(.in = _reset_BX, .out = reset_nrn_hs_BO, .supply = supply);
+    sigbuf<N_SYN_X> rsb_syn_storage(.in = reset_syn_stge_BI, .out = reset_syn_stge_BO, .supply = supply);
+    INV_X1 nrn_reset_stge_inv(.a = register.data[0].d[6].t, .vdd = supply.vdd, .vss = supply.vss);
+    sigbuf<N_NRN_X> rsb_nrn_storage(.in = nrn_reset_stge_inv.y, .out = reset_nrn_stge_BO, .supply = supply);
+
+}
+
+
+
+
+
+
+export template<pint N_IN,  // Size of input data from outside world
+N_NRN_X, N_NRN_Y, N_SYN_X, N_SYN_Y, // Number of neurons / synapses
+NC_NRN_X, NC_NRN_Y, NC_SYN_X, NC_SYN_Y,
+N_SYN_DLY_CFG,
+N_NRN_MON_X, N_NRN_MON_Y, N_SYN_MON_X, N_SYN_MON_Y,
+N_MON_AMZO_PER_SYN, N_MON_AMZO_PER_NRN, // Number of signals that each synapse outputs to be monitored.
+N_FLAGS_PER_SYN, N_FLAGS_PER_NRN, // Number of signals that each nrn/syn recieves from the register.
+N_BUFFERS,
+N_LINE_PD_DLY, // Number of dummy delays to add line pull down
+N_BD_DLY_CFG, N_BD_DLY_CFG2,
+REG_NCA, REG_NCW, REG_M>
+defproc texel_dualcore (bd<N_IN> in, out;
+
+    Mx1of2<REG_NCW> c1_reg_data[REG_M];
+    
+    bool! c1_dec_req_x[N_SYN_X], c1_dec_req_y[N_SYN_Y];
+    bool? c1_dec_ackB[N_SYN_X];
+    a1of1 c1_syn_pu[N_SYN_X];
+
+    a1of1 c1_enc_inx[N_NRN_X], c1_enc_iny[N_NRN_Y];
+    a1of1 c1_nrn_pd_x[N_NRN_X], c1_nrn_pd_y[N_NRN_Y];
+
+    bool! c1_nrn_mon_x[N_NRN_MON_X], c1_nrn_mon_y[N_NRN_MON_Y];
+    bool! c1_syn_mon_x[N_SYN_MON_X], c1_syn_mon_y[N_SYN_MON_Y];
+    bool? c1_syn_mon_AMZI[N_SYN_X * N_MON_AMZO_PER_SYN], c1_nrn_mon_AMZI[N_NRN_X * N_MON_AMZO_PER_NRN];
+    bool! c1_syn_mon_AMZO[N_MON_AMZO_PER_SYN], c1_nrn_mon_AMZO[N_MON_AMZO_PER_NRN];
+    bool! c1_syn_flags_EFO[N_FLAGS_PER_SYN], c1_nrn_flags_EFO[N_FLAGS_PER_NRN];
+
+    bool! c1_reset_nrn_hs_BO[N_NRN_X], c1_reset_syn_hs_BO[N_SYN_X],
+    c1_reset_nrn_stge_BO[N_NRN_X], c1_reset_syn_stge_BO[N_SYN_X];
+
+    Mx1of2<REG_NCW> c2_reg_data[REG_M];
+
+    bool! c2_dec_req_x[N_SYN_X], c2_dec_req_y[N_SYN_Y];
+    bool? c2_dec_ackB[N_SYN_X];
+    a1of1 c2_syn_pu[N_SYN_X];
+
+    a1of1 c2_enc_inx[N_NRN_X], c2_enc_iny[N_NRN_Y];
+    a1of1 c2_nrn_pd_x[N_NRN_X], c2_nrn_pd_y[N_NRN_Y];
+
+    bool! c2_nrn_mon_x[N_NRN_MON_X], c2_nrn_mon_y[N_NRN_MON_Y];
+    bool! c2_syn_mon_x[N_SYN_MON_X], c2_syn_mon_y[N_SYN_MON_Y];
+    bool? c2_syn_mon_AMZI[N_SYN_X * N_MON_AMZO_PER_SYN], c2_nrn_mon_AMZI[N_NRN_X * N_MON_AMZO_PER_NRN];
+    bool! c2_syn_mon_AMZO[N_MON_AMZO_PER_SYN], c2_nrn_mon_AMZO[N_MON_AMZO_PER_NRN];
+    bool! c2_syn_flags_EFO[N_FLAGS_PER_SYN], c2_nrn_flags_EFO[N_FLAGS_PER_NRN];
+
+    bool! c2_reset_nrn_hs_BO[N_NRN_X], c2_reset_syn_hs_BO[N_SYN_X],
+    c2_reset_nrn_stge_BO[N_NRN_X], c2_reset_syn_stge_BO[N_SYN_X];
+    
+    bool? bd_dly_cfg[N_BD_DLY_CFG], bd_dly_cfg2[N_BD_DLY_CFG2];
+    bool? loopback_en;
+    power supply;
+    bool? reset_B, reset_reg_B, reset_syn_stge_BI
+    ){
+
+    // Reset buffers
+    bool _reset_BX;
+    BUF_X12 reset_buf(.a = reset_B, .y = _reset_BX, .vdd = supply.vdd, .vss = supply.vss);
+
+    bd2qdi<N_IN, N_BD_DLY_CFG, N_BD_DLY_CFG2> _bd2qdi(.in = in, .dly_cfg = bd_dly_cfg, .dly_cfg2 = bd_dly_cfg2,
+        .reset_B = _reset_BX, .supply = supply);
+    fifo<N_IN,N_BUFFERS> fifo_in2fork(.in = _bd2qdi.out, .reset_B = _reset_BX, .supply = supply);
+
+    fork<N_IN> _fork(.in = fifo_in2fork.out, .reset_B = _reset_BX, .supply = supply);
+
+    // Loopback
+    fifo<N_IN,N_BUFFERS> fifo_fork2drop(.in = _fork.out1, .reset_B = _reset_BX, .supply = supply);
+    dropper_static<N_IN, false> _loopback_dropper(.in = fifo_fork2drop.out, .cond = loopback_en,
+        .supply = supply);
+    fifo<N_IN,N_BUFFERS> fifo_drop2mrg(.in = _loopback_dropper.out, .reset_B = _reset_BX, .supply = supply);
+
+
+    // Onwards to core demux
+    fifo<N_IN,N_BUFFERS> fifo_fork2dmx(.in = _fork.out2, .reset_B = _reset_BX, .supply = supply);
+    demux_bit_msb<N_IN-1> core_dmx(.in = fifo_fork2dmx.out, .reset_B = _reset_BX, .supply = supply);
+    fifo<N_IN-1,N_BUFFERS> fifo_dmx2core1(.in = core_dmx.out1, .reset_B = _reset_BX, .supply = supply);
+    fifo<N_IN-1,N_BUFFERS> fifo_dmx2core2(.in = core_dmx.out2, .reset_B = _reset_BX, .supply = supply);
+
+    // Cores
+    texel_core<N_IN-1,N_NRN_X, N_NRN_Y, N_SYN_X, N_SYN_Y,NC_NRN_X, NC_NRN_Y, NC_SYN_X, NC_SYN_Y,N_SYN_DLY_CFG,N_NRN_MON_X, N_NRN_MON_Y, N_SYN_MON_X, N_SYN_MON_Y,N_MON_AMZO_PER_SYN, N_MON_AMZO_PER_NRN,N_FLAGS_PER_SYN, N_FLAGS_PER_NRN,N_BUFFERS,N_LINE_PD_DLY, REG_NCA, REG_NCW, REG_M>
+        core1(.in = fifo_dmx2core1.out,
+
+            .reg_data = c1_reg_data,
+            // .synapses = c1_synapses,
+            // .neurons = c1_neurons,
+
+            .dec_req_x = c1_dec_req_x, .dec_req_y = c1_dec_req_y,
+            .dec_ackB = c1_dec_ackB,
+            .syn_pu = c1_syn_pu,
+
+            .enc_inx = c1_enc_inx, .enc_iny = c1_enc_iny,
+            .nrn_pd_x = c1_nrn_pd_x, .nrn_pd_y = c1_nrn_pd_y,
+
+            .nrn_mon_x = c1_nrn_mon_x, .nrn_mon_y = c1_nrn_mon_y,
+            .syn_mon_x = c1_syn_mon_x, .syn_mon_y = c1_syn_mon_y,
+            .syn_mon_AMZI = c1_syn_mon_AMZI, .nrn_mon_AMZI = c1_nrn_mon_AMZI,
+            .syn_mon_AMZO = c1_syn_mon_AMZO, .nrn_mon_AMZO = c1_nrn_mon_AMZO,
+            .syn_flags_EFO = c1_syn_flags_EFO, .nrn_flags_EFO = c1_nrn_flags_EFO,
+
+            .reset_B = _reset_BX, .reset_reg_B = reset_reg_B, .reset_syn_stge_BI = reset_syn_stge_BI,
+            .reset_syn_hs_BO = c1_reset_syn_hs_BO, .reset_syn_stge_BO = c1_reset_syn_stge_BO,
+            .reset_nrn_hs_BO = c1_reset_nrn_hs_BO, .reset_nrn_stge_BO = c1_reset_nrn_stge_BO,
+
+            .supply = supply
+            );
+
+
+    texel_core<N_IN-1,N_NRN_X, N_NRN_Y, N_SYN_X, N_SYN_Y,NC_NRN_X, NC_NRN_Y, NC_SYN_X, NC_SYN_Y,N_SYN_DLY_CFG,N_NRN_MON_X, N_NRN_MON_Y, N_SYN_MON_X, N_SYN_MON_Y,N_MON_AMZO_PER_SYN, N_MON_AMZO_PER_NRN,N_FLAGS_PER_SYN, N_FLAGS_PER_NRN,N_BUFFERS,N_LINE_PD_DLY, REG_NCA, REG_NCW, REG_M>
+        core2(.in = fifo_dmx2core2.out,
+
+            .reg_data = c2_reg_data,
+            // .synapses = c2_synapses,
+            // .neurons = c2_neurons,
+
+            .dec_req_x = c2_dec_req_x, .dec_req_y = c2_dec_req_y,
+            .dec_ackB = c2_dec_ackB,
+            .syn_pu = c2_syn_pu,
+
+            .enc_inx = c2_enc_inx, .enc_iny = c2_enc_iny,
+            .nrn_pd_x = c2_nrn_pd_x, .nrn_pd_y = c2_nrn_pd_y,
+
+            .nrn_mon_x = c2_nrn_mon_x, .nrn_mon_y = c2_nrn_mon_y,
+            .syn_mon_x = c2_syn_mon_x, .syn_mon_y = c2_syn_mon_y,
+            .syn_mon_AMZI = c2_syn_mon_AMZI, .nrn_mon_AMZI = c2_nrn_mon_AMZI,
+            .syn_mon_AMZO = c2_syn_mon_AMZO, .nrn_mon_AMZO = c2_nrn_mon_AMZO,
+            .syn_flags_EFO = c2_syn_flags_EFO, .nrn_flags_EFO = c2_nrn_flags_EFO,
+
+            .reset_B = _reset_BX, .reset_reg_B = reset_reg_B, .reset_syn_stge_BI = reset_syn_stge_BI,
+            .reset_syn_hs_BO = c2_reset_syn_hs_BO, .reset_syn_stge_BO = c2_reset_syn_stge_BO,
+            .reset_nrn_hs_BO = c2_reset_nrn_hs_BO, .reset_nrn_stge_BO = c2_reset_nrn_stge_BO,
+            
+            .supply = supply
+            );
+
+    fifo<N_IN-1,N_BUFFERS> fifo_core1out(.in = core1.out, .reset_B = _reset_BX, .supply = supply);
+    fifo<N_IN-1,N_BUFFERS> fifo_core2out(.in = core2.out, .reset_B = _reset_BX, .supply = supply);
+
+   
+    // Merge cores
+    append<N_IN-1, 1, 0> append_core1(.in = fifo_core1out.out, .supply = supply);
+    append<N_IN-1, 1, 1> append_core2(.in = fifo_core2out.out, .supply = supply);
+    merge<N_IN> merge_core1x2(.in1 = append_core1.out, .in2 = append_core2.out,
+        .supply = supply, .reset_B = _reset_BX);
+
+    // Merge cores and loopback
+    merge<N_IN> merge_drop8core(.in1 = merge_core1x2.out, .in2 = fifo_drop2mrg.out,
+        .reset_B = _reset_BX, .supply = supply);
+
+    // qdi2bd
+    fifo<N_IN, N_BUFFERS> fifo_mrg2bd(.in = merge_drop8core.out,
+        .reset_B = _reset_BX, .supply = supply);
+    qdi2bd<N_IN, N_BD_DLY_CFG> _qdi2bd(.in = fifo_mrg2bd.out, .out = out, .dly_cfg = bd_dly_cfg,
+        .reset_B = _reset_BX, .supply = supply);
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+}
+

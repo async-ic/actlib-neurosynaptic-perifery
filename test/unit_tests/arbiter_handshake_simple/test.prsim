@@ -1,0 +1,42 @@
+watchall
+system "echo '[0] code starts'"
+set t.in1.r 0
+set t.in2.r 0
+set t.out.a 0
+cycle
+status X
+mode run
+system "echo '[1] reset done'"
+system "echo '----------------------------------------------------------------------------------------------------'"
+set t.in1.r 1
+cycle
+assert t.out.r 1
+set t.out.a 1
+cycle
+assert t.in1.a 1
+system "echo '[2] test in1 done'"
+system "echo '----------------------------------------------------------------------------------------------------'"
+set t.in1.r 0
+cycle 
+assert t.out.r 0
+set t.out.a 0
+cycle
+assert t.in1.a 0
+system "echo '[3] reset done'"
+system "echo '----------------------------------------------------------------------------------------------------'"
+set t.in2.r 1
+cycle
+assert t.out.r 1
+set t.out.a 1
+cycle
+assert t.in2.a 1
+system "echo '[4] test in2 done'"
+system "echo '----------------------------------------------------------------------------------------------------'"
+set t.in2.r 0
+cycle 
+assert t.out.r 0
+set t.out.a 0
+cycle
+assert t.in2.a 0
+system "echo '[5] reset done'"
+system "echo '----------------------------------------------------------------------------------------------------'"

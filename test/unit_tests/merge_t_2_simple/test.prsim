@@ -1,0 +1,65 @@
+
+watchall
+set Reset 1
+set-qdi-channel-neutral "my_merge.in1" 2
+set-qdi-channel-neutral "my_merge.in2" 2
+set my_merge.in1.v 0
+set my_merge.in2.v 0
+set my_merge.out.a 0
+set my_merge.out.v 0
+cycle
+assert-qdi-channel-neutral "my_merge.out" 2
+system "echo '-------------------------------------------------'"
+system "echo '[0] System initialized'"
+
+set Reset 0
+cycle
+system "echo '-------------------------------------------------'"
+system "echo '[1] System reset completed'"
+status X
+mode run
+assert-qdi-channel-neutral "my_merge.out" 2
+cycle
+system "echo '-------------------------------------------------'"
+system "echo '[2] Output neutral checked'"
+
+set-qdi-channel-valid "my_merge.in1" 2 2
+cycle
+assert my_merge.in1.v 1
+assert my_merge.in1.a 0
+assert-qdi-channel-valid "my_merge.out" 2 2
+set my_merge.out.v 1
+cycle
+assert my_merge.in1.a 1
+set-qdi-channel-neutral "my_merge.in1" 2
+cycle
+assert my_merge.in1.v 0
+set my_merge.out.a 1
+cycle
+assert-qdi-channel-neutral "my_merge.out" 2
+set my_merge.out.v 0
+set my_merge.out.a 0
+cycle
+assert my_merge.in1.a 0
+cycle
+system "echo '-------------------------------------------------'"
+system "echo '[3] In1 channel checked'"
+set-qdi-channel-valid "my_merge.in2" 2 2
+cycle
+assert my_merge.in2.v 1
+assert my_merge.in2.a 0
+assert-qdi-channel-valid "my_merge.out" 2 2
+set my_merge.out.v 1
+cycle
+assert my_merge.in2.a 1
+set-qdi-channel-neutral "my_merge.in2" 2
+cycle
+set my_merge.out.a 1
+cycle
+assert-qdi-channel-neutral "my_merge.out" 2
+set my_merge.out.a 0
+set my_merge.out.v 0
+cycle
+assert my_merge.in2.a 0
+system "echo '-------------------------------------------------'"
+system "echo '[4] In2 valid checked'"

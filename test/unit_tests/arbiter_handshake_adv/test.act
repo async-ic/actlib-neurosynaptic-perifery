@@ -1,0 +1,52 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library.
+ * It's the testing facility for cell_lib_std.act
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)  
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+import "../../neurosynaptic_perifery/primitives.act";
+import globals;
+
+open tmpl::neurosynaptic_perifery;
+
+defproc arbiter_test(a1of1 in1; a1of1 in2; a1of1 out)
+{
+  a1of1 _out1,_out2;
+  fifo_t<4> fifo_in1(.in = in1,.out = _out1);
+  fifo_t<4> fifo_in2(.in = in2,.out = _out2);
+  fifo_in1.supply.vdd = Vdd;
+  fifo_in1.supply.vss = GND; 
+  fifo_in1.reset_B = Reset;
+  fifo_in2.supply.vdd = Vdd;
+  fifo_in2.supply.vss = GND; 
+  fifo_in2.reset_B = Reset; 
+
+
+  arbiter_handshake arb(.in1 = _out1, .in2 = _out2, .out = out);
+  arb.supply.vdd = Vdd;
+  arb.supply.vss = GND; 
+}
+
+arbiter_test t;

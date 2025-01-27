@@ -1,0 +1,52 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library.
+ * It's the testing facility for cell_lib_std.act
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)  
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+import "../../neurosynaptic_perifery/coders.act";
+import globals;
+
+open tmpl::neurosynaptic_perifery;
+
+defproc decoder_2d_dly_and_2_4(awMx1of2<1+2> in; bool? out[2*4], dly_cfg[4])
+
+{
+  bool _reset_B; 
+  prs {
+    Reset => _reset_B-
+  }
+  decoder_2d_dly<1,2,2,4,4> de(.in = in, .dly_cfg = dly_cfg);
+  de.supply.vdd = Vdd;
+  de.supply.vss = GND; 
+  de.reset_B = _reset_B;
+
+  and_grid<2,4> ag(.inx = de.outx, .iny = de.outy, .out = out);
+  ag.supply.vdd = Vdd;
+  ag.supply.vss = GND;
+
+}
+
+decoder_2d_dly_and_2_4 t;

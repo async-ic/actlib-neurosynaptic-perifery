@@ -1,0 +1,202 @@
+watchall
+
+set b.in[0].r 0
+set b.in[1].r 0
+set b.in[2].r 0
+set b.in[3].r 0
+set b.in[4].r 0
+set b.in[5].r 0
+set b.in[6].r 0
+set b.in[7].r 0
+set b.in[8].r 0
+set b.in[9].r 0
+set b.in[10].r 0
+set b.in[11].r 0
+set b.in[12].r 0
+set b.in[13].r 0
+set b.in[14].r 0
+
+set b.outx[0].a 0
+set b.outx[1].a 0
+set b.outx[2].a 0
+
+set b.outy[0].a 0
+set b.outy[1].a 0
+set b.outy[2].a 0
+set b.outy[3].a 0
+set b.outy[4].a 0
+
+# set b.outx[0].r 1
+# set b.outx[1].r 1
+# set b.outx[2].r 1
+
+# set b.outy[0].r 1
+# set b.outy[1].r 1
+# set b.outy[2].r 1
+# set b.outy[3].r 1
+# set b.outy[4].r 0
+
+# set b.b.neurons[0]._en 0
+# set b.b.neurons[0]._req 1
+
+# set Reset 0
+cycle
+
+system "echo '[] set Reset 1'"
+set Reset 1
+cycle
+status X
+
+
+system "echo '[] set Reset 0'"
+set Reset 0
+mode run
+cycle
+
+assert b.outx[0].r 0
+assert b.outx[1].r 0
+assert b.outx[2].r 0
+
+assert b.outy[0].r 0
+assert b.outy[1].r 0
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+
+
+system "echo '[] Neurons 0,1,3 spike'"
+set b.in[0].r 1
+set b.in[1].r 1
+set b.in[3].r 1
+cycle
+assert b.outx[0].r 0
+assert b.outx[1].r 0
+assert b.outx[2].r 0
+
+assert b.outy[0].r 1
+assert b.outy[1].r 1
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+
+assert b.in[0].a 1
+assert b.in[1].a 1
+assert b.in[3].a 1
+
+system "echo '[] removing in reqs'"
+set b.in[0].r 0
+set b.in[1].r 0
+set b.in[3].r 0
+cycle
+assert b.in[0].a 0
+assert b.in[1].a 0
+assert b.in[3].a 0
+
+
+system "echo '[] y0 chosen, give ack'"
+set b.outy[0].a 1
+cycle
+assert b.outx[0].r 1
+assert b.outx[1].r 1
+assert b.outx[2].r 0
+
+assert b.outy[0].r 0
+assert b.outy[1].r 1
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+
+system "echo '[] x0 chosen, give ack'"
+set b.outx[0].a 1
+cycle
+assert b.outx[0].r 0
+assert b.outx[1].r 1
+assert b.outx[2].r 0
+
+assert b.outy[0].r 0
+assert b.outy[1].r 1
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+
+system "echo '[] remove x ack'"
+set b.outx[0].a 0
+cycle
+assert b.outx[0].r 0
+assert b.outx[1].r 1
+assert b.outx[2].r 0
+
+assert b.outy[0].r 0
+assert b.outy[1].r 1
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+
+system "echo '[] x1 remaining, give ack'"
+set b.outx[1].a 1
+cycle
+assert b.outx[0].r 0
+assert b.outx[1].r 0
+assert b.outx[2].r 0
+
+assert b.outy[0].r 0
+assert b.outy[1].r 1
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+
+system "echo '[] remove acks'"
+set b.outx[1].a 0
+set b.outy[0].a 0
+cycle
+assert b.outx[0].r 0
+assert b.outx[1].r 0
+assert b.outx[2].r 0
+
+assert b.outy[0].r 0
+assert b.outy[1].r 1
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+
+system "echo '[] y1 remaining, give ack'"
+set b.outy[1].a 1
+cycle
+assert b.outx[0].r 1
+assert b.outx[1].r 0
+assert b.outx[2].r 0
+
+assert b.outy[0].r 0
+assert b.outy[1].r 0
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+
+system "echo '[] x0 req, give ack'"
+set b.outx[0].a 1
+cycle
+assert b.outx[0].r 0
+assert b.outx[1].r 0
+assert b.outx[2].r 0
+
+assert b.outy[0].r 0
+assert b.outy[1].r 0
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+
+
+system "echo '[] remove acks'"
+set b.outx[0].a 0
+set b.outy[1].a 0
+cycle
+assert b.outx[0].r 0
+assert b.outx[1].r 0
+assert b.outx[2].r 0
+
+assert b.outy[0].r 0
+assert b.outy[1].r 0
+assert b.outy[2].r 0
+assert b.outy[3].r 0
+assert b.outy[4].r 0
+

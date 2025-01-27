@@ -1,0 +1,140 @@
+watchall
+
+set b.out.a 0
+set b.out.v 0
+set b.in.r 0
+
+set b.dly_cfg[0] 1
+set b.dly_cfg[1] 1
+set b.dly_cfg[2] 1
+set b.dly_cfg[3] 1
+
+set b.dly_cfg2[0] 1
+set b.dly_cfg2[1] 1
+
+set b.in.d[0] 1
+set b.in.d[1] 0
+set b.in.d[2] 0
+set b.in.d[3] 1
+set b.in.d[4] 0
+
+set Reset 0
+cycle
+
+system "echo '[] set Reset 1'"
+set Reset 1
+cycle
+
+system "echo '[] set Reset 0'"
+set Reset 0
+mode run
+cycle
+status X
+assert-qdi-channel-neutral "b.out" 5
+assert b.in.a 0
+
+
+system "echo '[] Reset finished, setting data'"
+set b.in.d[0] 0
+set b.in.d[1] 1
+set b.in.d[2] 1
+set b.in.d[3] 0
+set b.in.d[4] 1
+cycle
+
+system "echo '[] Reset finished, setting req 1'"
+set b.in.r 1
+cycle
+assert-qdi-channel-valid "b.out" 5 22
+
+system "echo '[] Receiving val out'"
+set b.out.v 1
+# set b.out.a 1
+cycle
+assert-qdi-channel-valid "b.out" 5 22
+assert b.in.a 1
+
+system "echo '[] Changing some input data'"
+set b.in.d[0] 1
+set b.in.d[1] 1
+set b.in.d[2] 1
+cycle
+system "echo '[] Removing req'"
+set b.in.r 0
+system "echo '[] Changing more data'"
+set b.in.d[3] 0
+set b.in.d[4] 0
+cycle
+assert-qdi-channel-valid "b.out" 5 22
+
+system "echo '[] Receiving ack out'"
+set b.out.a 1
+cycle
+assert-qdi-channel-neutral "b.out" 5 
+set b.out.v 0
+cycle
+assert b.in.a 0
+
+system "echo '[] Set ack out 0'"
+set b.out.a 0
+cycle
+assert-qdi-channel-neutral "b.out" 5 
+assert b.in.a 0
+
+
+
+
+
+
+
+
+
+
+system "echo '[] Again!!! setting data'"
+
+
+set b.in.d[0] 0
+set b.in.d[1] 0
+set b.in.d[2] 0
+set b.in.d[3] 0
+set b.in.d[4] 0
+cycle
+
+system "echo '[] Again!!! setting req 1'"
+set b.in.r 1
+cycle
+assert-qdi-channel-valid "b.out" 5 0
+
+system "echo '[] Receiving val out'"
+set b.out.v 1
+# set b.out.a 1
+cycle
+assert-qdi-channel-valid "b.out" 5 0
+assert b.in.a 1
+
+system "echo '[] Changing some input data'"
+set b.in.d[0] 1
+set b.in.d[1] 1
+set b.in.d[2] 1
+cycle
+system "echo '[] Removing req'"
+set b.in.r 0
+system "echo '[] Changing more data'"
+set b.in.d[3] 0
+set b.in.d[4] 0
+cycle
+assert-qdi-channel-valid "b.out" 5 0
+
+system "echo '[] Receiving ack out'"
+set b.out.a 1
+cycle
+assert-qdi-channel-neutral "b.out" 5 
+set b.out.v 0
+cycle
+assert b.in.a 0
+
+system "echo '[] Set ack out 0'"
+set b.out.a 0
+cycle
+assert-qdi-channel-neutral "b.out" 5 
+assert b.in.a 0

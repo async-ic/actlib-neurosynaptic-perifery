@@ -1,0 +1,174 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ * 
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+import "../../neurosynaptic_perifery/cell_lib_async.act";
+import "../../neurosynaptic_perifery/cell_lib_std.act";
+import "../../neurosynaptic_perifery/treegates.act";
+import "../../neurosynaptic_perifery/primitives.act";
+import std::channel;
+open std::channel;
+
+// import std::func;
+open std;
+
+import std::data;
+open std::data;
+
+
+namespace tmpl {
+	namespace neurosynaptic_perifery {
+
+		/**
+		 * Bundled data (non dual rail, with req)
+		 * 2
+		 * quasi delay insensitive channel (dual rail).
+		 * Basically a buffer with a bitwise conversion in front of it.
+		 */
+		export template<pint N, N_dly_cfg, N_dly_cfg2>
+		defproc bd2qdi(bd<N> in; awMx1of2<N> out; bool? dly_cfg[N_dly_cfg], dly_cfg2[N_dly_cfg2];
+			power supply; bool? reset_B) {
+			
+			// Delay on req_in
+			bool _req;
+			delayprog<N_dly_cfg> dly(.in = in.r, .out = _req, .s = dly_cfg, .supply = supply);
+
+			// sig buff the reset signal
+			bool _reset_BX, _reset_BXX[N*2];
+			BUF_X4 reset_buf(.a=reset_B, .y=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            sigbuf<N*2> reset_bufarray(.in=_reset_BX, .out=_reset_BXX, .supply=supply);
+
+            // sig buff the req
+			bool _reqX, _reqXX[N*2];
+			BUF_X4 req_buf(.a=_req, .y=_reqX,.vdd=supply.vdd,.vss=supply.vss);
+        	sigbuf<N*2> req_bufarray(.in=_reqX, .out=_reqXX, .supply=supply);
+
+			// For reasons of pure spice, the control circuitry 
+			// requires a req signal that FALLS SLOWER than the req going to the function block.
+			// Thus need another delay prog.
+			bool _req_slowfall;
+			delayprog<N_dly_cfg2> dly2(.in = _reqX, .s = dly_cfg2, .supply = supply);
+			OR2_X1 req_dly_or(.a = _reqX, .b = dly2.out, .y = _req_slowfall,
+				.vss = supply.vss, .vdd = supply.vdd);
+
+            // bd2qdi conversion
+            // Each line goes to a t pin, its not to an f.
+            bool _inB[N];
+            INV_X1 input_invs[N];
+            (i:N:
+            	input_invs[i].a = in.d[i];
+            	input_invs[i].y = _inB[i];
+            	input_invs[i].vss = supply.vss;
+            	input_invs[i].vdd = supply.vdd;
+            )
+
+			// BUFFER
+			// Basically the buffer_s but with the validity tree ripped out
+			// and just connected to in_req instead.
+
+			// And probably need a delay on the in_ack to ensure en has time to disable
+			// before the inputs go to another state.
+			// Actually apparently no: there is a fixed, huge delay, already incurred
+			// by communicating with pads-> uC -> windows 95 and back again.
+
+            // Since the input is never invalid, also need a mechanism
+            // for the output to become invalid, when an out_ack is received. 
+
+            //control
+            bool _en;
+            A_3C_RB_X4 inack_ctl(.c1=_en,.c2=_req_slowfall,.c3=out.v,.y=in.a,.pr_B=_reset_BX,.sr_B=_reset_BX,.vdd=supply.vdd,.vss=supply.vss);
+            A_1C1P_X1 en_ctl(.c1=in.a,.p1=out.v,.y=_en,.vdd=supply.vdd,.vss=supply.vss);
+
+            //function
+            bool _out_a_B;
+            A_2C2N_RB_X4 f_buf_func[N];
+            A_2C2N_RB_X4 t_buf_func[N];
+            sigbuf<N*2> en_buf(.in=_en, .supply=supply);
+            INV_X1 out_a_inv(.a=out.a,.y=_out_a_B, .vss = supply.vss, .vdd = supply.vdd);
+            sigbuf<N*2> out_a_B_buf(.in=_out_a_B, .supply=supply);
+            // check if you can also do single var to array connect a=b[N]
+            // and remove them from the loop
+            (i:N: 
+                f_buf_func[i].y=out.d.d[i].f;
+                t_buf_func[i].y=out.d.d[i].t;
+                f_buf_func[i].c1=en_buf.out[i];
+                t_buf_func[i].c1=en_buf.out[i+N];
+                f_buf_func[i].c2=out_a_B_buf.out[i];
+                t_buf_func[i].c2=out_a_B_buf.out[i+N];
+                f_buf_func[i].n1=_inB[i];
+                t_buf_func[i].n1=in.d[i];
+                f_buf_func[i].n2=_reqXX[i];
+                t_buf_func[i].n2=_reqXX[i+N];
+                f_buf_func[i].vdd=supply.vdd;
+                t_buf_func[i].vdd=supply.vdd;
+                f_buf_func[i].vss=supply.vss;
+                t_buf_func[i].vss=supply.vss;
+                t_buf_func[i].pr_B = _reset_BXX[i];
+                t_buf_func[i].sr_B = _reset_BXX[i];
+                f_buf_func[i].pr_B = _reset_BXX[i+N];
+                f_buf_func[i].sr_B = _reset_BXX[i+N];
+            )
+
+		}
+
+
+		
+		/**
+		 * quasi delay insensitive channel (dual rail).
+		 * 2
+		 * Bundled data (non dual rail, with req)
+		 */
+		export template<pint N, N_dly_cfg>
+		defproc qdi2bd(awMx1of2<N> in; bd<N> out; bool? dly_cfg[N_dly_cfg]; power supply; bool? reset_B) {
+
+            // Buffer
+            buffer<N> buf(.in = in, .supply = supply, .reset_B = reset_B);
+            buf.out.a = out.a;
+            
+            // Vtree
+            vtree<N> out_vtree(.supply = supply);
+            (i:N:
+            	out_vtree.in.d[i].t = buf.out.d.d[i].t;
+            	out_vtree.in.d[i].f = buf.out.d.d[i].f;
+            )
+            buf.out.v = out_vtree.out;
+
+            // Delay
+            delayprog<N_dly_cfg> dly(.in = out_vtree.out, .out = out.r, .s = dly_cfg, .supply = supply);
+            out_vtree.out = dly.in;
+
+            // Wire output data bits to buffer True lines
+            (i:N:
+            	buf.out.d.d[i].t = out.d[i];
+            )
+
+		}
+
+
+
+	}
+
+}

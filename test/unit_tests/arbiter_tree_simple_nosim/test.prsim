@@ -1,0 +1,52 @@
+
+watchall
+set my_tree.in[0].r 0
+set my_tree.in[1].r 0
+set my_tree.in[2].r 0
+set my_tree.in[3].r 0
+set my_tree.in[4].r 0
+set my_tree.out.a 0
+
+cycle
+
+assert my_tree.in[0].a 0
+assert my_tree.in[1].a 0
+assert my_tree.in[2].a 0
+assert my_tree.in[3].a 0
+assert my_tree.in[4].a 0
+assert my_tree.out.r 0
+
+system "echo '-------------------------------------------------'"
+system "echo '[0] System initialized'"
+
+set Reset 0
+cycle
+system "echo '-------------------------------------------------'"
+system "echo '[1] System reset completed'"
+
+set my_tree.in[0].r 1
+set my_tree.in[2].r 1
+set my_tree.in[4].r 1
+
+cycle
+
+assert my_tree.out.r 1
+set my_tree.out.a 1
+cycle
+
+assert my_tree.in[4].a 1
+set my_tree.in[4].r 0
+system "echo '-------------------------------------------------'"
+system "echo '[2] Number 4 was chosen, move to the next one'"
+cycle
+assert my_tree.out.r 0
+set my_tree.out.a 0
+cycle
+assert my_tree.in[4].a 0
+assert my_tree.out.r 1
+set my_tree.out.a 1
+cycle
+assert my_tree.in[0].a 1
+system "echo '-------------------------------------------------'"
+system "echo '[2] Number 0 was chosen, finish test'"
+

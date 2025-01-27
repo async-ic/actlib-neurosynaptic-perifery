@@ -1,0 +1,94 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ * 
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+
+
+import "../../neurosynaptic_perifery/cell_lib_async.act";
+import "../../neurosynaptic_perifery/cell_lib_std.act";
+import "../../neurosynaptic_perifery/treegates.act";
+import "../../neurosynaptic_perifery/primitives.act";
+// import tmpl::neurosynaptic_perifery;
+// import tmpl::neurosynaptic_perifery;
+import std::channel;
+open std::channel;
+
+namespace tmpl {
+    namespace neurosynaptic_perifery {
+
+
+/**
+ * Creates a synapse-neuron dummy block, 
+ * where any synapse being triggered makes the neuron "spike".
+ */
+export template<pint N_SYN>
+defproc dummy_neuron_block (a1of1 synapses[N_SYN], neuron; power supply){
+    // OR over reqs from syn in to neuron out
+    ortree<N_SYN> _ortree(.out = neuron.r, .supply = supply);
+    (i:N_SYN: _ortree.in[i] = synapses[i].r;)
+
+    // ANDs piping the ack back to the proper synapse
+
+    BUF_X12 nrn_ack_buf(.a = neuron.a, .vdd = supply.vdd, .vss = supply.vss);
+
+    AND2_X1 ands[N_SYN];
+    (i:N_SYN:
+        ands[i].a = nrn_ack_buf.y;
+        ands[i].b = synapses[i].r;
+        ands[i].y = synapses[i].a;
+
+        ands[i].vss = supply.vss;
+        ands[i].vdd = supply.vdd;
+    )
+}
+
+/**
+ * Create an array of neuron dummy blocks.
+ * Note that this is custom made for the indexing on the texel chip.
+ * And so should be reused *with care*.
+ */
+export template<pint N_SYN_PER_NRN, N_NRN, N_NRN_X>
+defproc dummy_neuron_core (a1of1 synapses[N_SYN_PER_NRN * N_NRN], neurons[N_NRN]; power supply){
+    dummy_neuron_block<N_SYN_PER_NRN> blocks[N_NRN];
+    pint Xn, Yn, Xs, Ys;
+    (i:N_NRN:
+        Yn = i/N_NRN_X;
+        Xn = i-Yn*N_NRN_X;
+        neurons[i] = blocks[i].neuron;
+        blocks[i].supply = supply;
+        (j:N_SYN_PER_NRN: // moron, need to think about neuron indexxing too
+            Xs = Xn;
+            Ys = Yn*N_SYN_PER_NRN + j;
+            blocks[i].synapses[j] = synapses[Ys*N_NRN_X + Xs];
+        )
+    )
+}
+
+
+
+
+}
+}

@@ -1,0 +1,18 @@
+defproc arbiter (bool a, b, u, v)
+{
+  bool _u, _v;
+  prs {
+   [keeper=0]  a &  _v -> _u-
+   [keeper=0] ~a  | ~_v  -> _u+
+   [keeper=0]  b &  _u -> _v-
+   [keeper=0] ~b  | ~_u  -> _v+
+   [keeper=0] _u  => u-
+   [keeper=0] _v => v-
+  }
+  spec {
+    mk_excllo(_u, _v)
+  }
+}
+
+
+arbiter a;

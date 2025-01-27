@@ -1,0 +1,149 @@
+watchall
+
+
+# Use handshaking at first
+set e.dly_cfg[0] 0
+set e.dly_cfg[1] 0
+set e.dly_cfg[2] 0
+set e.dly_cfg[3] 0
+set e.hs_en 1
+set e.ack_disable 0
+
+
+set e.out.a 0
+set e.out.v 0
+set-qdi-channel-neutral "e.in" 7
+set Reset 1
+
+cycle
+
+
+mode run
+system "echo '[] Set reset 0'"
+status X
+set Reset 0
+cycle
+
+
+
+system "echo '[] Sending in a packet'"
+set-qdi-channel-valid "e.in" 7 75
+cycle
+assert-qdi-channel-valid "e.out" 7 75
+assert e.in.a 1
+assert e.in.v 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "e.in" 7
+cycle
+assert e.in.a 0
+assert e.in.v 0
+
+system "echo '[] Sending in another packet'"
+set-qdi-channel-valid "e.in" 7 22
+cycle
+# Output is still the first packet
+assert-qdi-channel-valid "e.out" 7 75
+assert e.in.a 1
+assert e.in.v 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "e.in" 7
+cycle
+assert e.in.a 0
+assert e.in.v 0
+
+system "echo '[] Giving out ack'"
+set e.out.a 1
+set e.out.v 1
+cycle
+assert-qdi-channel-neutral "e.out" 7
+
+system "echo '[] Removing ack'"
+set e.out.a 0
+set e.out.v 0
+cycle
+assert-qdi-channel-valid "e.out" 7 22
+
+system "echo '[] Giving out ack'"
+set e.out.a 1
+set e.out.v 1
+cycle
+assert-qdi-channel-neutral "e.out" 7
+
+system "echo '[] Removing ack'"
+set e.out.a 0
+set e.out.v 0
+cycle
+assert-qdi-channel-neutral "e.out" 7
+
+
+# Enable delays
+set e.dly_cfg[0] 1
+set e.dly_cfg[1] 1
+set e.dly_cfg[2] 1
+set e.dly_cfg[3] 1
+set e.hs_en 0
+cycle
+
+
+
+mode run
+system "echo '[] Set reset 0'"
+status X
+set Reset 0
+cycle
+
+
+
+system "echo '[] Sending in a packet WITH DELAYS'"
+set-qdi-channel-valid "e.in" 7 75
+cycle
+assert-qdi-channel-valid "e.out" 7 75
+assert e.in.a 1
+assert e.in.v 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "e.in" 7
+cycle
+assert e.in.a 0
+assert e.in.v 0
+
+system "echo '[] Sending in another packet'"
+set-qdi-channel-valid "e.in" 7 22
+cycle
+# Output is still the first packet
+assert-qdi-channel-valid "e.out" 7 75
+assert e.in.a 1
+assert e.in.v 1
+
+system "echo '[] Removing input'"
+set-qdi-channel-neutral "e.in" 7
+cycle
+assert e.in.a 0
+assert e.in.v 0
+
+system "echo '[] Giving out ack'"
+set e.out.a 1
+set e.out.v 1
+cycle
+assert-qdi-channel-neutral "e.out" 7
+
+system "echo '[] Removing ack'"
+set e.out.a 0
+set e.out.v 0
+cycle
+assert-qdi-channel-valid "e.out" 7 22
+
+system "echo '[] Giving out ack'"
+set e.out.a 1
+set e.out.v 1
+cycle
+assert-qdi-channel-neutral "e.out" 7
+
+system "echo '[] Removing ack'"
+set e.out.a 0
+set e.out.v 0
+cycle
+assert-qdi-channel-neutral "e.out" 7
+

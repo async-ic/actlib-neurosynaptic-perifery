@@ -1,0 +1,73 @@
+
+set-qdi-channel-neutral "t.in" 4
+set t.out[0].a 0
+set t.out[1].a 0
+set t.out[2].a 0
+set t.out[3].a 0
+set t.out[4].a 0
+set t.out[5].a 0
+set t.out[6].a 0
+set t.out[7].a 0
+set t.out[8].a 0
+set t.out[9].a 0
+set t.out[10].a 0
+set t.out[11].a 0
+set t.out[12].a 0
+set t.out[13].a 0
+set t.out[14].a 0
+
+cycle
+system "echo 'reset start'"
+
+set Reset 0
+
+cycle
+system "echo 'reset completed'"
+status X
+mode run
+
+assert-bd-channel-neutral "t.out[0]" 4
+assert-bd-channel-neutral "t.out[1]" 4
+assert-bd-channel-neutral "t.out[2]" 4
+assert-bd-channel-neutral "t.out[3]" 4
+assert-bd-channel-neutral "t.out[4]" 4
+assert-bd-channel-neutral "t.out[5]" 4
+assert-bd-channel-neutral "t.out[6]" 4
+assert-bd-channel-neutral "t.out[7]" 4
+assert-bd-channel-neutral "t.out[8]" 4
+assert-bd-channel-neutral "t.out[9]" 4
+assert-bd-channel-neutral "t.out[10]" 4
+assert-bd-channel-neutral "t.out[11]" 4
+assert-bd-channel-neutral "t.out[12]" 4
+assert-bd-channel-neutral "t.out[13]" 4
+assert-bd-channel-neutral "t.out[14]" 4
+cycle
+
+set-qdi-channel-valid "t.in" 4 5
+cycle
+assert t.in.v 1
+assert-bd-channel-valid "t.out[0]" 4 0
+set t.out[5].a 1
+cycle
+assert t.in.a 1
+set-qdi-channel-neutral "t.in" 4
+cycle
+assert t.out[5].r 0
+set t.in.a 0
+cycle
+assert-bd-channel-neutral "t.out[0]" 4
+assert-bd-channel-neutral "t.out[1]" 4
+assert-bd-channel-neutral "t.out[2]" 4
+assert-bd-channel-neutral "t.out[3]" 4
+assert-bd-channel-neutral "t.out[4]" 4
+assert-bd-channel-neutral "t.out[5]" 4
+assert-bd-channel-neutral "t.out[6]" 4
+assert-bd-channel-neutral "t.out[7]" 4
+assert-bd-channel-neutral "t.out[8]" 4
+assert-bd-channel-neutral "t.out[9]" 4
+assert-bd-channel-neutral "t.out[10]" 4
+assert-bd-channel-neutral "t.out[11]" 4
+assert-bd-channel-neutral "t.out[12]" 4
+assert-bd-channel-neutral "t.out[13]" 4
+assert-bd-channel-neutral "t.out[14]" 4
+system "echo 'Finished'"

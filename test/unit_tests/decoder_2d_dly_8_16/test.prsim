@@ -1,0 +1,59 @@
+watchall
+
+set-qdi-channel-neutral "b.in" 7
+set b.b.addr_buf.out.a 0
+set Reset 0
+
+# Set delay config lines
+set b.dly_cfg[0] 1
+set b.dly_cfg[1] 1
+set b.dly_cfg[2] 1
+set b.dly_cfg[3] 1
+
+cycle
+
+system "echo '[] set Reset 1'"
+set Reset 1
+cycle
+
+system "echo '[] set Reset 0'"
+set Reset 0
+mode run
+cycle
+
+system "echo '[] Sending packet in'"
+set-qdi-channel-valid "b.in" 7 127
+cycle
+assert b.in.a 1
+assert b.in.v 1
+
+
+# system "echo '[]' Setting ack from DLY high"
+# set b.b.addr_buf.out.a 1
+cycle
+
+assert b.outx[0] 0
+assert b.outx[1] 0
+assert b.outx[2] 0
+assert b.outx[3] 0
+assert b.outx[4] 0
+assert b.outx[5] 0
+assert b.outx[6] 0
+assert b.outx[7] 0
+
+assert b.outy[0] 0
+assert b.outy[1] 0
+assert b.outy[2] 0
+assert b.outy[3] 0
+assert b.outy[4] 0
+assert b.outy[5] 0
+assert b.outy[6] 0
+assert b.outy[7] 0
+assert b.outy[8] 0
+assert b.outy[9] 0
+assert b.outy[10] 0
+assert b.outy[11] 0
+assert b.outy[12] 0
+assert b.outy[13] 0
+assert b.outy[14] 0
+assert b.outy[15] 0

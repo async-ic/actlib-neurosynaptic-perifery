@@ -1,0 +1,78 @@
+watchall
+
+set-bd-channel-neutral "b.in" 9
+# set b.in.r 0
+set b.out.a 0
+
+set b.dly_cfg[0] 1
+set b.dly_cfg[1] 1
+set b.dly_cfg[2] 1
+set b.dly_cfg[3] 1
+
+set b.dly_cfg2[0] 1
+set b.dly_cfg2[1] 1
+
+
+cycle
+
+mode run
+system "echo '[] Set reset 0'"
+status X
+set Reset 0
+cycle
+assert b.in.a 0
+assert-bd-channel-neutral "b.out" 8
+
+system "echo '[] Sending packet write 0s to reg0'"
+set-bd-data-valid "b.in" 9 256
+cycle
+set b.in.r 1
+cycle
+assert b.in.a 1
+# assert b.in.v 1
+assert-var-int "b.data[0]" 5 0
+
+system "echo '[] Removing input'"
+set-bd-channel-neutral "b.in" 9
+cycle
+assert b.in.a 0
+# assert b.in.v 0
+assert-var-int "b.data[0]" 5 0
+
+system "echo '[] Sending packet write 01100=12 to reg0'"
+set-bd-data-valid "b.in" 9 352
+cycle
+set b.in.r 1
+cycle
+assert b.in.a 1
+# assert b.in.v 1
+assert-var-int "b.data[0]" 5 12
+
+system "echo '[] Removing input'"
+set-bd-channel-neutral "b.in" 9
+cycle
+assert b.in.a 0
+# assert b.in.v 0
+assert-var-int "b.data[0]" 5 12
+
+system "echo '[] Reading register 0'"
+set-bd-data-valid "b.in" 9 0
+cycle
+set b.in.r 1
+cycle
+assert-bd-channel-valid "b.out" 8 96
+assert b.out.r 1
+# assert b.in.v 1
+assert b.in.a 1
+
+set b.out.a 1
+cycle
+assert-bd-channel-neutral "b.out" 8
+assert b.in.a 1
+
+system "echo '[] Removing input'"
+set-bd-channel-neutral "b.in" 9
+cycle
+assert b.in.a 0
+set b.out.a 0
+cycle

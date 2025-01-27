@@ -1,0 +1,78 @@
+watchall
+
+set b.out.a 0
+set b.out.v 0
+set Reset 0
+set-qdi-channel-neutral "b.in" 5
+cycle
+
+system "echo '[] set Reset 1'"
+set Reset 1
+cycle
+
+system "echo '[] set Reset 0'"
+set Reset 0
+mode run
+cycle
+status X
+assert-qdi-channel-neutral "b.out" 8
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] sending in a 31'"
+set-qdi-channel-valid "b.in" 5 31
+cycle
+assert-qdi-channel-valid "b.out" 8 127
+assert b.in.a 1
+assert b.in.v 1
+
+system "echo '[] removing input'"
+set-qdi-channel-neutral "b.in" 5
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+system "echo '[] sending in a 0'"
+set-qdi-channel-valid "b.in" 5 0
+cycle
+# assert-qdi-channel-valid "b.out" 8 96
+assert b.in.a 1
+assert b.in.v 1
+
+system "echo '[] removing input'"
+set-qdi-channel-neutral "b.in" 5
+cycle
+assert b.in.a 0
+assert b.in.v 0
+
+
+system "echo '[] receiving out ack/val'"
+set b.out.a 1
+set b.out.v 1
+cycle
+assert-qdi-channel-neutral "b.out" 8
+
+
+system "echo '[] removing out ack/val'"
+set b.out.a 0
+set b.out.v 0
+cycle
+assert-qdi-channel-valid "b.out" 8 96
+
+
+system "echo '[] receiving out ack/val'"
+set b.out.a 1
+set b.out.v 1
+cycle
+assert-qdi-channel-neutral "b.out" 8
+
+
+system "echo '[] removing out ack/val'"
+set b.out.a 0
+set b.out.v 0
+cycle
+assert-qdi-channel-neutral "b.out" 8
+
+
+
+

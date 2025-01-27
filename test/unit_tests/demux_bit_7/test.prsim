@@ -1,0 +1,77 @@
+watchall
+set-qdi-channel-neutral "my_demux.in" 8
+set my_demux.out1.a 0
+set my_demux.out1.v 0
+set my_demux.out2.a 0
+set my_demux.out2.v 0
+set my_demux.in.d.d[0].t 0
+set my_demux.in.d.d[0].f 0
+cycle
+system "echo 'System initialized'"
+
+set Reset 0
+cycle
+system "echo 'System reset completed'"
+status X
+mode run
+
+assert-qdi-channel-neutral "my_demux.out1" 7
+assert-qdi-channel-neutral "my_demux.out2" 7
+assert-qdi-channel-neutral "my_demux.in" 8
+cycle
+
+system "echo 'Output neutral checked'"
+
+set-qdi-channel-valid "my_demux.in" 8 254
+cycle
+assert my_demux.in.v 1
+assert my_demux.in.a 0
+
+assert-qdi-channel-valid "my_demux.out1" 7 127
+assert-qdi-channel-neutral "my_demux.out2" 7
+set my_demux.out1.v 1
+cycle
+assert my_demux.in.a 1
+set-qdi-channel-neutral "my_demux.in" 8
+cycle
+set my_demux.out1.a 1
+
+
+system "echo 'First Cond Checked'"
+
+
+set Reset 0
+cycle
+system "echo 'System reset completed'"
+status X
+mode run
+
+assert-qdi-channel-neutral "my_demux.out1" 7
+assert-qdi-channel-neutral "my_demux.out2" 7
+assert-qdi-channel-neutral "my_demux.in" 8
+cycle
+
+system "echo 'Output neutral checked'"
+
+set my_demux.out1.a 0
+set my_demux.out1.v 0
+set my_demux.out2.a 0
+set my_demux.out2.v 0
+cycle
+
+set-qdi-channel-valid "my_demux.in" 8 101
+cycle
+assert my_demux.in.v 1
+assert my_demux.in.a 0
+
+assert-qdi-channel-valid "my_demux.out2" 7 50
+set my_demux.out2.v 1
+cycle
+assert my_demux.in.a 1
+set-qdi-channel-neutral "my_demux.in" 7
+cycle
+
+
+system "echo 'Second Cond Checked'"
+
+

@@ -1,0 +1,29 @@
+
+set-qdi-channel-neutral "t.in" 15
+set t.out.a 0
+set t.out.v 0
+cycle
+system "echo 'yo man'"
+
+set Reset 0
+
+cycle
+system "echo 'reset completed'"
+status X
+mode run
+
+assert-qdi-channel-neutral "t.out" 15
+cycle
+
+set-qdi-channel-valid "t.in" 15 5
+cycle
+assert t.in.v 1
+assert t.in.a 0
+assert-qdi-channel-valid "t.out" 15 5
+set t.out.v 1
+cycle
+assert t.in.a 1
+set-qdi-channel-neutral "t.in" 15
+cycle
+set t.out.a 1
+system "echo 'Finished'"

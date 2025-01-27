@@ -1,0 +1,1146 @@
+/*************************************************************************
+ *
+ *  This file is part of ACT neurosynaptic perifery library
+ *
+ *  Copyright (c) 2022-2025 Ole Richter (2022-2024 University of Groningen, 2024-2025 Yale University, 2025 Technical University Denmark)
+ *  Copyright (c) 2022-2023 Michele Mastella (University of Groningen)
+ *  Copyright (c) 2022 Hugh Greatorex (University of Groningen)
+ *  Copyright (c) 2022-2024 Madison Cotteret (University of Groningen)
+ * 
+ *
+ *  This source describes Open Hardware and is licensed under the CERN-OHL-W v2 or later
+ *
+ *  You may redistribute and modify this documentation and make products
+ *  using it under the terms of the CERN-OHL-W v2 (https:/cern.ch/cern-ohl).
+ *  This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED
+ *  WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY
+ *  AND FITNESS FOR A PARTICULAR PURPOSE. Please see the CERN-OHL-W v2
+ *  for applicable conditions.
+ *
+ *  Source location: https://github.com/async-ic/actlib-neurosynaptic-perifery.git
+ *
+ *  As per CERN-OHL-W v2 section 4.1, should You produce hardware based on
+ *  these sources, You must maintain the Source Location visible in its
+ *  documentation and maintain a citation in academic or commertial publications.
+ *
+ **************************************************************************
+ */
+import "../../neurosynaptic_perifery/cell_lib_async.act";
+import "../../neurosynaptic_perifery/cell_lib_std.act";
+import "../../neurosynaptic_perifery/treegates.act";
+import "../../neurosynaptic_perifery/primitives.act";
+import "../../neurosynaptic_perifery/interfaces.act";
+// import tmpl::neurosynaptic_perifery;
+// import tmpl::neurosynaptic_perifery;
+import std::channel;
+open std::channel;
+
+// import std::func;
+open std;
+
+import std::data;
+open std::data;
+
+
+// import dev::channel;
+// open dev::channel;
+
+
+namespace tmpl {
+	namespace neurosynaptic_perifery {
+
+/**
+ * Dualrail decoder.
+ * Nc is the number of dualrail input channels.
+ * Then builds N output AND gates, connecting to the right input wires.
+ */
+export template<pint Nc, N>
+defproc decoder_dualrail (Mx1of2<Nc> in; bool? out[N]; power supply) {
+	// signal buffers
+	sigbuf<N> in_tX[Nc];
+	sigbuf<N> in_fX[Nc];	
+	(i:Nc:
+		in_tX[i].supply = supply;
+		in_tX[i].in = in.d[i].t;
+
+		in_fX[i].supply = supply;
+		in_fX[i].in = in.d[i].f;
+	)
+
+	// AND trees
+	pint bitval;
+	andtree<Nc> atree[N];
+	(k:0..N-1:atree[k].supply = supply;)
+	(i:0..N-1:
+		(j:0..Nc-1:
+			bitval = (i & ( 1 << j )) >> j; // Get binary digit of integer i, column j
+			[bitval = 1 ->
+				atree[i].in[j] = in_tX[j].out[i];
+				// atree[i].in[j] = addr_buf.out.d.d[j].t;
+				[]bitval = 0 ->
+				atree[i].in[j] = in_fX[j].out[i];
+				// atree[i].in[j] = addr_buf.out.d.d[j].f;
+				[]bitval >= 2 -> {false : "fuck"};
+				]
+			atree[i].out = out[i];
+			)
+		)
+}
+
+
+/**
+ * Dualrail decoder, but the signals to the decoders are refreshed every 48 gates.
+ * final_refresh is signal at the end of the refresh line.
+ * Is needed for doing validity checking etc, since it is the laggiest signal.
+ */
+export template<pint Nc, N>
+defproc decoder_dualrail_refresh (Mx1of2<Nc> in; bool? out[N]; Mx1of2<Nc> final_refresh; power supply) {
+	// signal buffers
+	pint index;
+	pint NUM_OUTS_PER_BUF = 96;
+	pint NUM_REFRESH = N/(NUM_OUTS_PER_BUF); // x2 bc only half the output bits look for it.
+	// NUM_REFRESH = 0;
+	BUF_X12 in_tX[Nc*(NUM_REFRESH+1)];
+	BUF_X12 in_fX[Nc*(NUM_REFRESH+1)];
+
+	(i:Nc:
+		// Connect start
+		in_tX[i].a =  in.d[i].t;
+		in_fX[i].a =  in.d[i].f;
+
+		// Connect mid bois
+		(j:NUM_REFRESH:
+			index = i + (1+j)*Nc;
+			in_tX[index].a = in_tX[index-Nc].y;
+			in_fX[index].a = in_fX[index-Nc].y;
+		)
+
+		// Connect end
+		in_tX[i+NUM_REFRESH*Nc].y = final_refresh.d[i].t;
+		in_fX[i+NUM_REFRESH*Nc].y = final_refresh.d[i].f;
+	)
+	
+	(i:Nc*(NUM_REFRESH+1):
+		in_tX[i].vdd = supply.vdd;
+		in_tX[i].vss = supply.vss;
+		in_fX[i].vdd = supply.vdd;
+		in_fX[i].vss = supply.vss;
+	)
+
+	// AND trees
+	pint bitval;
+	andtree<Nc> atree[N];
+	(k:0..N-1:atree[k].supply = supply;)
+	(i:0..N-1:
+		(j:0..Nc-1:
+			bitval = (i & ( 1 << j )) >> j; // Get binary digit of integer i, column j
+			[bitval = 1 ->
+				atree[i].in[j] = in_tX[j+((i/NUM_OUTS_PER_BUF)*Nc)].y;
+				// atree[i].in[j] = addr_buf.out.d.d[j].t;
+				[]bitval = 0 ->
+				atree[i].in[j] = in_fX[j+((i/NUM_OUTS_PER_BUF)*Nc)].y;
+				// atree[i].in[j] = addr_buf.out.d.d[j].f;
+				[]bitval >= 2 -> {false : "fuck"};
+				]
+			atree[i].out = out[i];
+			)
+		)
+}
+
+
+/**
+ * Dualrail decoder with on/off switch.
+ * Outputs are NOT buffered.
+ */
+export template<pint Nc, N>
+defproc decoder_dualrail_en(Mx1of2<Nc> in; bool? en, out[N]; power supply) {
+
+	decoder_dualrail_refresh<Nc, N> decoder(.out = out, .supply = supply);
+
+	sigbuf<Nc*2> sb_en(.in = en, .supply = supply);
+	// AND2_X1 en_ands[N];
+	// (i:N:
+	// 	en_ands[i].a = decoder.out[i];
+	// 	en_ands[i].b = sb_en.out[i];
+
+	// 	en_ands[i].vdd = supply.vdd;
+	// 	en_ands[i].vss = supply.vss;
+
+	// 	en_ands[i].y = out[i];
+
+	// )
+
+	AND2_X1 en_ands_t[Nc];
+	AND2_X1 en_ands_f[Nc];
+	(i:Nc:
+		en_ands_t[i].a = in.d[i].t;
+		en_ands_f[i].a = in.d[i].f;
+
+		en_ands_t[i].b = sb_en.out[i];
+		en_ands_f[i].b = sb_en.out[i+Nc];
+		
+		en_ands_t[i].y = decoder.in.d[i].t;
+		en_ands_f[i].y = decoder.in.d[i].f;
+
+		en_ands_t[i].vdd = supply.vdd;
+		en_ands_t[i].vss = supply.vss;
+		en_ands_f[i].vdd = supply.vdd;
+		en_ands_f[i].vss = supply.vss;
+	)
+
+}
+
+
+
+/**
+ * @TODO check that this is definitely exactly the same as hybrid, maybe keep
+ * 
+ * 
+ * 2D decoder which uses a configurable delay from the VCtrees to buffer ack.
+ *	Nx is the x size of the decoder array
+ * 	NxC is the number of wires in the x channel.
+ * 	Thus NxC should be something like NxC = ceil(log2(Nx))
+ * 	but my guess is that we can't do logs...
+ * 	N_dly_cfg is the number of config bits in the ACK delay line,
+ * 	with all bits high corresponding to 2**N_dly_cfg -1 DLY4_X1 cells.
+ */
+export template<pint NxC, NyC, Nx, Ny, N_dly_cfg>
+defproc decoder_2d_dly (awMx1of2<NxC+NyC> in; bool? outx[Nx], outy[Ny], 
+	dly_cfg[N_dly_cfg], reset_B; power supply) {
+
+	// Buffer to recieve concat(x,y) address packet
+	buffer<NxC+NyC> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
+
+	// Validity trees
+	vtree<NxC> vtree_x (.supply = supply);
+	vtree<NyC> vtree_y (.supply = supply);
+	(i:0..NxC-1:vtree_x.in.d[i].t = addr_buf.out.d.d[i].t;)
+	(i:0..NxC-1:vtree_x.in.d[i].f = addr_buf.out.d.d[i].f;)
+	(i:0..NyC-1:vtree_y.in.d[i].t = addr_buf.out.d.d[i+NxC].t;)
+	(i:0..NyC-1:vtree_y.in.d[i].f = addr_buf.out.d.d[i+NxC].f;)
+
+
+	// Delay ack line. Ack line is delayed (but not the val)
+	A_2C_B_X1 C2el(.c1 = vtree_x.out, .c2 = vtree_y.out, .vdd = supply.vdd, .vss = supply.vss);
+	addr_buf.out.v = C2el.y;
+
+	delayprog<N_dly_cfg> dly(.in = C2el.y, .s = dly_cfg, .supply = supply);
+	dly.out = addr_buf.out.a;
+
+	// Decoder X/Y And trees
+	decoder_dualrail<NxC,Nx> d_dr_x(.out = outx, .supply = supply);
+	(i:0..NxC-1:d_dr_x.in.d[i] = addr_buf.out.d.d[i];)
+
+	decoder_dualrail<NyC,Ny> d_dr_y(.out = outy, .supply = supply);
+	(i:0..NyC-1:d_dr_y.in.d[i] = addr_buf.out.d.d[i+NxC];)
+
+}
+
+export template<pint Nx, Ny>
+defproc and_grid(bool! out[Nx*Ny]; bool? inx[Nx], iny[Ny]; power supply) {
+	// Buffer inputs
+	// sigbuf<Ny> xbuf[Nx];
+	// sigbuf<Nx> ybuf[Ny];
+	sigbuf<47> xbuf[Nx]; // BUFFERING DISABLED FOR NOW
+	sigbuf<47> ybuf[Ny]; // CUS GET BUFFERED IN THE CORE
+	(i:Nx:
+		xbuf[i].in = inx[i];
+		xbuf[i].supply = supply;
+	)
+	(i:Ny:
+		ybuf[i].in = iny[i];
+		ybuf[i].supply = supply;
+	)
+
+	AND2_X1 ands[Nx*Ny];
+	(i:0..Nx*Ny-1:ands[i].vss = supply.vss; ands[i].vdd = supply.vdd;)
+	(x:0..Nx-1:
+		(y:0..Ny-1:
+			ands[x + y*Nx].a = xbuf[x].out[0];
+			ands[x + y*Nx].b = ybuf[y].out[0];
+			ands[x + y*Nx].y = out[x + y*Nx];
+			)
+		)
+}
+
+
+/**
+ * @TODO if this is going to be released, we should expose the to_pd terminals
+ * and probably buffer them the same
+ * like we did in the encoder or the hybrid
+ * Also we should probably keep the outs to be Nx x lines and Ny y lines,
+ * not Nx*Ny and-ed lines.
+ * 
+ * 2D decoder which uses synapse handshaking using line pulldowns.
+ *	Nx is the x size of the decoder array
+ * 	NxC is the number of wires in the x channel.
+ * 	but my guess is that we can't do logs...
+ * 	the req on a1of1 out is the req to each synapse.
+ * 	The ack back from each line should go high when the synapse is charged.
+ *  N_dly is a hard coded delay of the pull down circuit.
+ * 	It can be set to 0.
+ */
+export template<pint NxC, NyC, Nx, Ny>
+defproc decoder_2d_hs (awMx1of2<NxC+NyC> in; a1of1 out[Nx*Ny]; bool? reset_B; power supply) {
+
+	bool _reset_BX[Nx];
+	sigbuf<Nx> reset_sb(.in = reset_B, .out = _reset_BX, .supply = supply);
+
+	// Buffer to recieve concat(x,y) address packet
+	buffer<NxC+NyC> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
+
+	// Decoder X/Y And trees
+	decoder_dualrail<NxC,Nx> d_dr_x(.supply = supply);
+	(i:0..NxC-1:d_dr_x.in.d[i] = addr_buf.out.d.d[i];)
+	decoder_dualrail<NyC,Ny> d_dr_y(.supply = supply);
+	(i:0..NyC-1:d_dr_y.in.d[i] = addr_buf.out.d.d[i+NxC];)
+
+	// sig buf for reqx lines, since they go to synapse pull down gates.
+	sigbuf<Ny+1> d_dr_xX[Nx];
+	(i:Nx:
+		d_dr_xX[i].in = d_dr_x.out[i];
+		d_dr_xX[i].supply = supply;
+	)
+
+	// Validity 
+	vtree<NxC> vtree_x (.supply = supply);
+	vtree<NyC> vtree_y (.supply = supply);
+	(i:0..NxC-1:vtree_x.in.d[i].t = addr_buf.out.d.d[i].t;)
+	(i:0..NxC-1:vtree_x.in.d[i].f = addr_buf.out.d.d[i].f;)
+	(i:0..NyC-1:vtree_y.in.d[i].t = addr_buf.out.d.d[i+NxC].t;)
+	(i:0..NyC-1:vtree_y.in.d[i].f = addr_buf.out.d.d[i+NxC].f;)
+	A_2C_B_X1 valid_Cel(.c1 = vtree_x.out, .c2 = vtree_y.out, .y = addr_buf.out.v,
+		.vdd = supply.vdd, .vss = supply.vss);
+
+
+	// and grid for reqs into synapses
+	and_grid<Nx, Ny> _and_grid(.inx = d_dr_x.out, .iny = d_dr_y.out, .supply = supply);
+	(i:Nx*Ny: out[i].r = _and_grid.out[i];)
+
+	// Acknowledge pull down time
+
+	// Pull DOWNs on the ackB lines by synapses (easier to invert).
+	bool _out_acksB[Nx]; // The vertical output ack lines from each syn.
+	A_2N_U_X4 ack_pulldowns[Nx*Ny];
+	pint index;
+	(i:Nx:
+		(j:Ny:
+			index = i + Nx*j;
+			ack_pulldowns[index].n1 = out[index].a;
+			ack_pulldowns[index].n2 = d_dr_xX[i].out[j];
+			ack_pulldowns[index].y = _out_acksB[i];
+			ack_pulldowns[index].vss = supply.vss;
+			ack_pulldowns[index].vdd = supply.vdd;
+		)
+	)
+
+	// Line end pull UPs (triggered once reqs removed)
+	// Use two pullups rather than and-pullup 
+	// bc smaller
+	// and bc the delay that an AND induces means that the pullup could
+	// end up fighting a synapse pulldown, as both have the correct req sigs.
+	A_1P_U_X4 pu[Nx]; // TODO probably replace this with variable strength PU
+	A_1P_U_X4 pu_reset[Nx];
+	(i:Nx:
+		pu[i].p1 = d_dr_xX[i].out[Ny];
+		pu[i].y = _out_acksB[i];
+		pu[i].vdd = supply.vdd;
+		pu[i].vss = supply.vss;
+
+		pu_reset[i].p1 = _reset_BX[i];
+		pu_reset[i].y = _out_acksB[i];
+		pu_reset[i].vdd = supply.vdd;
+		pu_reset[i].vss = supply.vss;
+	)
+
+	// ORtree from all output acks, back to the buffer ack.
+	// This is instead of the ack that came from the delayed validity trees,
+	// in decoder_2d_dly.
+	ortree<Nx>  _ortree(.supply = supply);
+	INV_X1 out_ack_invs[Nx];
+	(i:Nx:
+		out_ack_invs[i].a = _out_acksB[i];
+		out_ack_invs[i].vdd = supply.vdd;
+		out_ack_invs[i].vss = supply.vss;
+
+		_ortree.in[i] = out_ack_invs[i].y;
+	)
+
+	// C element to ensure that the buffer receives an invalid
+	// _only_ once _both_ ackB has been reset, _and_ its output data
+	// has been fully invalidated.
+	// Otherwise run into the issue that ack is removed before data is invalid.
+	A_2C_B_X1 buf_ack_Cel(.c1 = _ortree.out, .c2 = valid_Cel.y, .y = addr_buf.out.a,
+		.vdd = supply.vdd, .vss = supply.vss);
+
+}
+
+
+/**
+ * Synapse handshaking stuff which exists in the core, and so will not be spawned in
+ * when innovusing all the periphery.
+ */
+export template<pint Nx, Ny>
+defproc decoder_2d_synapse_hs (bool? in_req_x[Nx], in_req_y[Ny]; a1of1 synapses[Nx*Ny];
+	bool out_ackB_decoder[Nx];
+	a1of1 to_pu[Nx];
+	power supply) {
+
+
+	// and grid for reqs into synapses
+	and_grid<Nx, Ny> _and_grid(.inx = in_req_x, .iny = in_req_y, .supply = supply);
+	(i:Nx*Ny: synapses[i].r = _and_grid.out[i];)
+	
+
+	// Pull DOWNs on the ackB lines by synapses (easier to invert).
+	A_2N_U_X4 ack_pulldowns[Nx*Ny];
+	pint index;
+	(i:Nx:
+		(j:Ny:
+			index = i + Nx*j;
+			ack_pulldowns[index].n1 = synapses[index].a;
+			ack_pulldowns[index].n2 = in_req_x[i]; // GET REFRHRESED IN CORE
+			ack_pulldowns[index].y = out_ackB_decoder[i];
+			ack_pulldowns[index].vss = supply.vss;
+			ack_pulldowns[index].vdd = supply.vdd;
+		)
+	)
+
+	// Connect the ackB lines together
+	(i:Nx: out_ackB_decoder[i] = to_pu[i].a;)
+
+	// Pipe req x lines down to the ackB pullups
+	(i:Nx: to_pu[i].r = in_req_x[i];)
+}
+
+/**
+ * 2D decoder which uses either synapse handshaking, or just a delay.
+ * Controlled by the "hs_en" (handshake_enable) config bit.
+ * hs_en = 0 -> use delayed version.
+ * hs_en = 1 -> use synapse handshaking.
+ * Regardless of which version is used, the final ack going to the buffer
+ * goes through the prog_delay block.
+ * Thus, for the handshaking version to be used "correctly", 
+ * dly_cfg should be set to all zeros.
+ * ack_disable blocks the ack being returned to the buffer.
+ * Is needed in case there are instabilities while we fiddle with delays.
+ */
+ // @TODO : think hard about the fact that the line end pullups are not placed manually,
+ // and write argumentation about whether this is fine
+export template<pint NxC, NyC, Nx, Ny, N_dly_cfg>
+defproc decoder_2d_hybrid (awMx1of2<NxC+NyC> in; bool! out_req_x[Nx], out_req_y[Ny]; bool? dly_cfg[N_dly_cfg], hs_en, ack_disable;
+	bool in_ackB_decoder[Nx]; // AckB lines back to the decoder for handshaking
+	a1of1 to_pu[Nx];
+	// bool out_ackB_pullups[Nx]; // AckB lines from the line end pull ups
+	// bool in_req_x_pullups[Nx]; // req x lines going to the line pull ups
+	bool? reset_B; power supply) {
+
+	bool _reset_BX[Nx];
+	sigbuf<Nx> reset_sb(.in = reset_B, .out = _reset_BX, .supply = supply);
+
+	bool hs_enB;
+	INV_X4 hs_inv(.a = hs_en, .y = hs_enB, .vdd = supply.vdd, .vss = supply.vss);
+
+	// Buffer to recieve concat(x,y) address packet
+	buffer<NxC+NyC> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
+
+	// Decoder X/Y And trees
+	decoder_dualrail_refresh<NxC,Nx> d_dr_x(.supply = supply);
+	(i:0..NxC-1:d_dr_x.in.d[i] = addr_buf.out.d.d[i];)
+	decoder_dualrail_refresh<NyC,Ny> d_dr_y(.supply = supply);
+	(i:0..NyC-1:d_dr_y.in.d[i] = addr_buf.out.d.d[i+NxC];)
+
+	// sig buf for reqx lines, since they go to synapse pull down gates.
+	// Signals to the and-grid are buffered therein.
+	sigbuf_boolarray<Nx,15> d_dr_xX(.in = d_dr_x.out, .supply = supply);
+	d_dr_xX.out = out_req_x;
+	sigbuf_boolarray<Ny,47> d_dr_yX(.in = d_dr_y.out, .supply = supply);
+	d_dr_yX.out = out_req_y;
+
+
+	// Validity 
+	vtree<NxC> vtree_x (.in = d_dr_x.final_refresh, .supply = supply);
+	vtree<NyC> vtree_y (.in = d_dr_y.final_refresh, .supply = supply);
+	A_2C_B_X1 valid_Cel(.c1 = vtree_x.out, .c2 = vtree_y.out, .y = addr_buf.out.v,
+		.vdd = supply.vdd, .vss = supply.vss);
+
+
+	
+	// Line end pull UPs (triggered once reqs removed)
+	// Use two pullups rather than and-pullup 
+	// bc smaller
+	// and bc the delay that an AND induces means that the pullup could
+	// end up fighting a synapse pulldown, as both have the correct req sigs.
+	A_2P_U_X4 pu[Nx]; // TODO probably replace this with variable strength PU
+	A_1P_U_X4 pu_reset[Nx];
+	(i:Nx:
+		pu[i].p1 = to_pu[i].r;
+		pu[i].p2 = hs_enB;
+		pu[i].y = to_pu[i].a;
+		pu[i].vdd = supply.vdd;
+		pu[i].vss = supply.vss;
+
+		pu_reset[i].p1 = _reset_BX[i];
+		pu_reset[i].y = to_pu[i].a;
+		pu_reset[i].vdd = supply.vdd;
+		pu_reset[i].vss = supply.vss;
+	)
+
+	// Add keeps (currently don't do anything in ACT)
+	KEEP keeps[Nx];
+	(i:Nx:
+		keeps[i].vdd = supply.vdd;
+		keeps[i].vss = supply.vss;
+		keeps[i].y = to_pu[i].a;
+	)
+
+
+	// ORtree from all output acks, back to the buffer ack.
+	// This is instead of the ack that came from the delayed validity trees,
+	// in decoder_2d_dly.
+	ortree<Nx>  _ortree(.supply = supply);
+	INV_X1 out_ack_invs[Nx];
+	(i:Nx:
+		out_ack_invs[i].a = in_ackB_decoder[i];
+		out_ack_invs[i].vdd = supply.vdd;
+		out_ack_invs[i].vss = supply.vss;
+
+		_ortree.in[i] = out_ack_invs[i].y;
+	)
+
+	// C element to ensure that the buffer receives an invalid
+	// _only_ once _both_ ackB has been reset, _and_ its output data
+	// has been fully invalidated.
+	// Otherwise run into the issue that ack is removed before data is invalid.
+	A_2C_B_X1 buf_ack_Cel(.c1 = _ortree.out, .c2 = valid_Cel.y,
+		.vdd = supply.vdd, .vss = supply.vss);
+
+	// Mux to switch between acks from handshake or delay
+	MUX2_X1 ack_mux(.s = hs_en, .a = valid_Cel.y, .b = buf_ack_Cel.y,
+		.vdd = supply.vdd, .vss = supply.vss);
+
+	// Programmable delay
+	delayprog<N_dly_cfg> dly(.in = ack_mux.y, .s = dly_cfg, .supply = supply);
+
+	// Final switch from register to maybe block the ack
+	INV_X1 ack_disableB(.a = ack_disable, .vdd = supply.vdd, .vss = supply.vss);
+	AND2_X1 ack_block(.a = dly.out, .b = ack_disableB.y, .y = addr_buf.out.a,
+	 .vdd = supply.vdd, .vss = supply.vss);
+
+
+}
+
+
+
+/*
+ * Build an arbiter_handshake tree.
+ */
+		export template<pint N>
+		defproc arbtree (a1of1 in[N]; a1of1 out; power supply)
+		{
+			bool tout;
+
+			{ N > 0 : "What?" };
+
+			pint i, end, j;
+			i = 0;
+			end = N-1;
+
+			pint arbCount;
+			arbCount = 0;
+	/* Pre"calculate" the number of C cells required, look below if confused */
+			*[ i != end ->
+				j = 0;
+				*[ i <= end ->
+					j = j + 1;
+					[i = end ->
+						i = end+1;
+						[] i+1 = end ->
+						i = end+1;
+						arbCount = arbCount +1;
+						[] else ->
+						i = i + 2;
+						arbCount = arbCount +1;
+						]
+					]
+			/*-- update range that has to be combined --*/
+			// i = end+1;
+				end = end+j;
+				]
+
+	/* array that holds ALL the nodes in the completion tree */
+			a1of1 tmp[end+1];
+
+	// Connecting the first nodes to the input
+			(l:N:
+				tmp[l] = in[l];
+				)
+
+	/* array to hold the actual C-elments, either A2C or A3C */
+			[arbCount > 0 ->
+				arbiter_handshake arbs[arbCount];
+				]
+			(h:arbCount:arbs[h].supply = supply;)
+
+	/* Reset the variables we just stole lol */
+			i = 0;
+			end = N-1;
+			j = 0;
+			pint arbIndex = 0;
+
+	/* Invariant: i <= end */
+
+			*[ i != end ->
+		 /* 
+			* Invariant: tmp[i..end] has the current signals that need to be
+			* combined together, and "isinv" specifies if they are the inverted
+			* sense or not
+			*/
+				j = 0;
+				*[ i <= end ->
+				/*-- there are still signals that need to be combined --*/
+					j = j + 1;
+					[ i = end ->
+				/*-- last piece: pipe input through to next layer --*/
+						tmp[end+j] = tmp[i];
+						i = end+1;
+						[] i+1 = end ->
+				/*-- last piece: use either a 2 input C-element --*/
+						arbs[arbIndex].in1 = tmp[i];
+						arbs[arbIndex].in2 = tmp[i+1];
+						arbs[arbIndex].out = tmp[end+j];
+						arbIndex = arbIndex +1;
+						i = end+1;
+						[] else ->
+				/*-- more to come; so use a two input C-element --*/
+						arbs[arbIndex].in1 = tmp[i];
+						arbs[arbIndex].in2 = tmp[i+1];
+						arbs[arbIndex].out = tmp[end+j];
+						arbIndex = arbIndex +1;
+						i = i + 2;
+						]
+					]
+				/*-- update range that has to be combined --*/
+				i = end+1;
+				end = end+j;
+				j = 0;
+				]
+
+			out = tmp[end];
+
+		}
+
+		// Generates the OR-trees required to go from 
+		// N one-hot inputs to Nc dual rail binary encoding.
+		export template<pint Nc, N>
+		defproc dualrail_encoder(bool? in[N]; Mx1of2<Nc> out; power supply) {
+			{N <= 1<<Nc : "Num inputs too wide for encoding channel!"};
+
+			// For each output line, need to precalculate how big of an OR tree it needs
+			// since can't presume that N = 2**Nc
+			// First version however, just be hella lazy and presume N=2**Nc, 
+			// connect extra nodes to ground (sorry)
+			pint _N; // N rounded up to a power of 2
+			_N = (1<<Nc);
+			ortree<_N/2> ors_t[Nc];
+			ortree<_N/2> ors_f[Nc];
+			(i:Nc:ors_t[i].supply = supply; ors_t[i].out = out.d[i].t;)
+			(i:Nc:ors_f[i].supply = supply; ors_f[i].out = out.d[i].f;)
+
+			bool _inX[N];
+			sigbuf_boolarray<N, Nc> sb_in(.in = in, .out = _inX, .supply = supply);
+
+			pint num_connected_t; // Number of guys already connected to the current OR tree
+			pint num_connected_f;
+
+			TIELO_X1 tielo[Nc]; // I'm sorry
+			(i:Nc:tielo[i].vdd = supply.vdd; tielo[i].vss = supply.vss;)
+
+			pint bitval;
+			(i:0..Nc-1: // For each output line
+				num_connected_t = 0;
+				num_connected_f = 0;
+				(j:0.. _N-1:
+					bitval = (j & ( 1 << i )) >> i; // Get binary digit of integer j, column i
+					[bitval = 1 & j <= N-1->
+						ors_t[i].in[num_connected_t] = _inX[j];
+						num_connected_t = num_connected_t + 1;
+					[] bitval = 0  & j <= N-1->
+						ors_f[i].in[num_connected_f] = _inX[j];
+						num_connected_f = num_connected_f + 1;
+					[] bitval = 1 & j > N-1->
+						ors_t[i].in[num_connected_t] = tielo[i].y;
+						num_connected_t = num_connected_t + 1;
+					[] bitval = 0  & j > N-1->
+						ors_f[i].in[num_connected_f] = tielo[i].y;
+						num_connected_f = num_connected_f + 1;
+					]
+
+					)
+
+
+
+				)
+
+		}
+
+
+
+    export
+    defproc nrn_line_end_pull_down (bool? in; bool? reset_B; power supply; bool! out)
+    {
+      INV_X1 inv(.a = reset_B, .vdd=supply.vdd,.vss =supply.vss);
+
+      TIEHI_X1 tiehi(.vdd = supply.vdd, .vss = supply.vss);
+
+      A_2N_U_X4 pull_down(.n1=in, .n2 = tiehi.y, .y=out);
+      A_2N_U_X4 pull_downR(.n1=inv.y, .n2 = tiehi.y, .y=out);
+    }
+
+
+
+		export template<pint NxC, NyC, Nx, Ny, N_dly>
+		defproc encoder2d_simple(a1of1 inx[Nx]; a1of1 iny[Ny]; awMx1of2<(NxC + NyC)> out;
+			a1of1 to_pd_x[Nx], to_pd_y[Ny]; // Ports for the line end pull downs to tap into
+			power supply; bool reset_B)		{
+
+			bool _a_x, _a_y;
+			bool _r_x, _r_y;
+			bool _r_x_B, _r_y_B;
+
+			buffer<NxC + NyC> buf(.out = out, .supply = supply, .reset_B = reset_B);
+
+			// Arbiters
+			arbtree<Nx> Xarb(.supply = supply);
+			arbtree<Ny> Yarb(.supply = supply);
+			Xarb.out.a = _a_x;
+			Xarb.out.r = _r_x;
+			Yarb.out.a = _a_y;
+			Yarb.out.r = _r_y;
+
+			// Encoders
+			dualrail_encoder<NxC, Nx> Xenc(.supply = supply);
+			dualrail_encoder<NyC, Ny> Yenc(.supply = supply);
+
+			delay_chain<N_dly> dly_x[Nx];
+			delay_chain<N_dly> dly_y[Ny];
+
+			BUF_X12 sb_inx_a[Nx];
+			BUF_X12 sb_iny_a[Ny];
+
+			// Wire up inputs to encoders and arb
+			(i:Nx:
+				Xarb.in[i].r = inx[i].r;
+				
+				dly_x[i].in = Xarb.in[i].a;
+				dly_x[i].out = sb_inx_a[i].a;
+				sb_inx_a[i].y = inx[i].a;
+				// Xarb.in[i].a = inx[i].a;
+				Xenc.in[i] = inx[i].a;
+
+				dly_x[i].supply = supply;
+				sb_inx_a[i].vdd = supply.vdd;
+				sb_inx_a[i].vss = supply.vss;
+			)
+
+			// Wire up inputs to encoders and arb
+			(i:Ny:
+				Yarb.in[i].r = iny[i].r;
+
+				dly_y[i].in = Yarb.in[i].a;
+				dly_y[i].out = sb_iny_a[i].a;
+				sb_iny_a[i].y = iny[i].a;
+				// Yarb.in[i].a = iny[i].a;
+				Yenc.in[i] = iny[i].a;
+
+				dly_y[i].supply = supply;
+				sb_iny_a[i].vdd = supply.vdd;
+				sb_iny_a[i].vss = supply.vss;
+			)
+
+			INV_X2 inv_buf(.a = buf.in.a, .vdd = supply.vdd, .vss = supply.vss);
+
+			A_2C_RB_X1 a_x_Cel(.c1 = inv_buf.y, .c2 = _r_x, .y = _a_x,
+				.sr_B = reset_B, .pr_B = reset_B, .vdd = supply.vdd, .vss = supply.vss);
+			A_2C_RB_X1 a_y_Cel(.c1 = inv_buf.y, .c2 = _r_y, .y = _a_y,
+				.sr_B = reset_B, .pr_B = reset_B, .vdd = supply.vdd, .vss = supply.vss);
+
+			// Wire up encoder to buffer
+			(i:NxC:
+				Xenc.out.d[i] = buf.in.d.d[i];
+			)
+			(i:NyC:
+				Yenc.out.d[i] = buf.in.d.d[i+NxC];
+			)
+
+
+			// Line pull down stuff
+			// Create delay fifos to emulate the fact that the line pull downs
+			// are at the end of the line, and thus slow.
+			// Note that if N_dly = 0, delay fifo is just a pipe.
+			// delay_chain<N_dly> dly_x[Nx];
+			// delay_chain<N_dly> dly_y[Ny];	
+			
+			// Create x line req pull downs
+			nrn_line_end_pull_down pd_x[Nx];
+			sigbuf<Nx> rsb_pd_x(.in = reset_B, .supply = supply);
+			(i:0..Nx-1:
+				// dly_x[i].supply = supply;
+				// dly_x[i].in = to_pd_x[i].a;
+				// pd_x[i].in = dly_x[i].out;
+				pd_x[i].in = to_pd_x[i].a;
+				
+				pd_x[i].out = to_pd_x[i].r;
+				pd_x[i].reset_B = rsb_pd_x.out[i];
+				pd_x[i].supply = supply;
+			)
+
+			// Create y line req pull downs
+			nrn_line_end_pull_down pd_y[Ny];
+			sigbuf<Ny> rsb_pd_y(.in = reset_B, .supply = supply);
+			(j:0..Ny-1:
+				// dly_y[j].supply = supply;
+				// dly_y[j].in = to_pd_y[j].a;
+				// pd_y[j].in = dly_y[j].out;
+				pd_y[j].in = to_pd_y[j].a;
+			
+				pd_y[j].out = to_pd_y[j].r;
+				pd_y[j].reset_B = rsb_pd_y.out[j];
+				pd_y[j].supply = supply;
+			)
+
+			// Add keeps
+			// Note that these are attached to the channel coming from the pull downs,
+			// not inx/y.r!!!
+			// This is because inx/y.r may be buffered.
+			KEEP keep_x[Nx];
+			(i:Nx:
+				keep_x[i].vdd = supply.vdd;
+				keep_x[i].vss = supply.vss;
+				// keep_x[i].y = inx[i].r;
+				keep_x[i].y = to_pd_x[i].r;
+
+			)
+
+			KEEP keep_y[Ny];
+			(j:Ny:
+				keep_y[j].vdd = supply.vdd;
+				keep_y[j].vss = supply.vss;
+				// keep_y[j].y = iny[j].r;
+				keep_y[j].y = to_pd_y[j].r;
+
+			)
+
+		}
+
+		export template<pint Nc, N>
+		defproc encoder1d_simple(a1of1 in[N]; awMx1of2<Nc> out;
+			power supply; bool reset_B)		{
+
+			bool _a_x, _r_x;
+			bool _r_x_B;
+
+			buffer<Nc> buf(.out = out, .supply = supply, .reset_B = reset_B);
+
+			// Arbiters
+			arbtree<N> Xarb(.supply = supply);
+			Xarb.out.a = _a_x;
+			Xarb.out.r = _r_x;
+
+			// Encoders
+			dualrail_encoder<Nc, N> Xenc(.supply = supply);
+
+			// Wire up inputs to encoders and arb
+			(i:N:
+				Xarb.in[i].r = in[i].r;
+				Xarb.in[i].a = in[i].a;
+				Xenc.in[i] = in[i].a;
+			)
+
+			INV_X2 inv_buf(.a = buf.in.a, .vdd = supply.vdd, .vss = supply.vss);
+
+			A_2C_RB_X1 a_x_Cel(.c1 = inv_buf.y, .c2 = _r_x, .y = _a_x,
+				.sr_B = reset_B, .pr_B = reset_B, .vdd = supply.vdd, .vss = supply.vss);
+
+			// Wire up encoder to buffer
+			(i:Nc:
+				Xenc.out.d[i] = buf.in.d.d[i];
+			)
+
+		}
+
+
+		/**
+	   * Encoder 1d followed by some fifos then a qd2bdi conversion.
+	   */
+		export template<pint Nc, N, N_BUFFERS, N_BD_DLY_CFG>
+		defproc encoder1d_bd(a1of1 in[N]; bd<Nc> out; bool? dly_cfg[N_BD_DLY_CFG], reset_B; power supply) {
+			bool _reset_BX;
+			BUF_X4 rsb(.a = reset_B, .y = _reset_BX, .vdd = supply.vdd, .vss = supply.vss);
+			encoder1d_simple<Nc, N> _enc(.in = in, .reset_B = _reset_BX, .supply = supply);
+			fifo<Nc, N_BUFFERS> _fifo(.in = _enc.out, .reset_B = _reset_BX, .supply = supply);
+			qdi2bd<Nc, N_BD_DLY_CFG> _qdi2bd(.in = _fifo.out, .out = out, .dly_cfg = dly_cfg,
+				.reset_B = _reset_BX, .supply = supply);
+		}
+
+		/**
+	   * Same as encoder1d_bd above but with inverters on in.a/r bc sadc neuron handshake
+	   * signals are backwards lol.
+	   */
+		export template<pint Nc, N, N_BUFFERS, N_BD_DLY_CFG>
+		defproc encoder1d_bd_sadc(a1of1 in[N]; bd<Nc> out; bool? dly_cfg[N_BD_DLY_CFG], reset_B; power supply) {
+			
+
+			encoder1d_bd<Nc, N, N_BUFFERS, N_BD_DLY_CFG> c(.out = out, .dly_cfg = dly_cfg,
+				.reset_B = reset_B, .supply = supply);
+
+			INV_X1 req_invs[N];
+			INV_X1 ack_invs[N];
+			(i:N:
+				req_invs[i](.a = in[i].r, .y = c.in[i].r, .vdd = supply.vdd, .vss = supply.vss);
+				ack_invs[i](.a = c.in[i].a, .y = in[i].a, .vdd = supply.vdd, .vss = supply.vss);
+
+			)
+			
+
+		}
+
+
+
+
+
+		/**
+	   * Neuron handshaking.
+	   * Looks for a rising edge on the neuron req.
+	   * Then performs a 2d handshake out outy then outx.
+	   */
+		export
+		defproc nrn_hs_2d(a1of1 in; a1of1 outx; a1of1 outy; power supply; bool reset_B)	{
+			bool _reset_BX;
+			BUF_X2 reset_buf(.a = reset_B, .y = _reset_BX, .vdd = supply.vdd, .vss = supply.vss);
+
+			bool _en, _req;
+
+			A_2C1N_RB_X1 A_ack(.c1 = _en, .c2 = in.r, .n1 = _req, .y = in.a,
+				.pr_B = _reset_BX, .sr_B = _reset_BX, .vss = supply.vss, .vdd = supply.vdd);
+
+
+			A_1C1P_X1 A_en(.p1 = _req, .c1 = in.a, .y = _en,
+				.vss = supply.vss, .vdd = supply.vdd);
+
+			bool _y_a_B, _x_a_B;
+			INV_X2 inv_x(.a = outx.a, .y = _x_a_B, .vss = supply.vss, .vdd = supply.vdd);
+			INV_X2 inv_y(.a = outy.a, .y = _y_a_B, .vss = supply.vss, .vdd = supply.vdd);
+
+
+			// WARNUNG WARNUNG WARNUNG //
+			// @TODO
+			// This neuron hs design has a fat timing assumption.
+			// Say that the neuron has sent out both reqs, and is now receiving the acks.
+			// _x_a_B and _y_a_B are then low, and _req starts to be pulled down to reset the hs.
+			// However, if the line pull downs at the end of the neuron row/column are fast enough,
+			// then seeing the high acks, they will pull the ack lines down. If the arbiter tree
+			// is sufficiently fast enough, then it will remove the ack lines.
+			// If this cell were rather tardy, then _req's pd would be cancelled midway,
+			// it missed its window of opportunity to switch, and would probably make the system hang.
+			// Or starts oscillating with the line pull down and goes brrrrapppppppp.
+			// This issue may be somewhat unavoidable, as from a black box perspective,
+			// we are giving the neuron acks, but then not listening to it at all to check
+			// that it has had time to act upon these acks.
+			A_2C1P1N_RB_X1 A_req(.p1 = _x_a_B, .c1 = _en, .c2 = _y_a_B, .n1 = in.r, .y = _req,
+				.pr_B = _reset_BX, .sr_B = _reset_BX, .vdd = supply.vdd, .vss = supply.vss);
+
+			// y_req pull up
+			bool _reqB;
+			INV_X1 req_inv(.a = _req, .y = _reqB, .vdd= supply.vdd, .vss = supply.vss);
+			A_2P_U_X4 pu_y(.p1 = outy.a, .p2 = _reqB, .y = outy.r, .vdd = supply.vdd, .vss = supply.vss);
+ 
+			// x_req pull up
+			A_3P_U_X4 pu_x(.p1 = outx.a,  .p2 = _y_a_B, .p3 = _reqB, .y = outx.r,
+				.vdd = supply.vdd, .vss = supply.vss);
+
+
+		}
+
+
+		/**
+	   * A 2d grid of neuron handshakers.
+	   * Should then slot into the encoder.
+	   * Each neuron has an a1of1 channel (in), which is tripped when a neuron spikes.
+	   * N_dly is number of delay elements to add to line pull down, 
+	   * for the purpose of running ACT sims.
+	   * It should probably be set to 0 though.
+	   */
+		export template<pint Nx, Ny>
+		defproc nrn_hs_2d_array(a1of1 in[Nx*Ny]; a1of1 outx[Nx], outy[Ny];
+			a1of1 to_pd_x[Nx], to_pd_y[Ny];
+			power supply; bool reset_B) {
+
+			// Make hella signal buffers
+			sigbuf<Ny> rsbx(.in = reset_B, .supply = supply);
+			sigbuf<Nx> rsb[Ny]; // ResetSigBuf
+			(j:Ny:
+				rsb[j].in = rsbx.out[j];
+				rsb[j].supply = supply;
+			)
+
+			// Add buffers on output req lines
+			a1of1 _outx[Nx], _outy[Ny];
+			BUF_X4 out_req_buf_x[Nx];
+			(i:Nx:
+				out_req_buf_x[i].vss = supply.vss;
+				out_req_buf_x[i].vdd = supply.vdd;
+				out_req_buf_x[i].a = _outx[i].r;
+				out_req_buf_x[i].y = outx[i].r;
+			)
+			BUF_X4 out_req_buf_y[Ny];
+			(i:Ny:
+				out_req_buf_y[i].vss = supply.vss;
+				out_req_buf_y[i].vdd = supply.vdd;
+				out_req_buf_y[i].a = _outy[i].r;
+				out_req_buf_y[i].y = outy[i].r;
+			)
+
+			// Add buffers on output ack lines
+			BUF_X12 out_ack_buf_x[Nx];
+			(i:Nx:
+				out_ack_buf_x[i].vss = supply.vss;
+				out_ack_buf_x[i].vdd = supply.vdd;
+				out_ack_buf_x[i].a = outx[i].a;
+				out_ack_buf_x[i].y = _outx[i].a;
+			)
+			BUF_X12 out_ack_buf_y[Ny];
+			(i:Ny:
+				out_ack_buf_y[i].vss = supply.vss;
+				out_ack_buf_y[i].vdd = supply.vdd;
+				out_ack_buf_y[i].a = outy[i].a;
+				out_ack_buf_y[i].y = _outy[i].a;
+			)
+
+
+
+			// Create handshake grid 
+			pint index;
+			nrn_hs_2d neurons[Nx*Ny];
+			(i:0..Nx-1:
+				(j:0..Ny-1:
+					index = i + j*Nx;
+					neurons[index].supply = supply;
+					neurons[index].reset_B = rsb[j].out[i];
+					neurons[index].in = in[index];
+					neurons[index].outx = _outx[i];
+					neurons[index].outy = _outy[j];
+				)
+			)
+
+			// Pipe the ack/req lines through to the pulldowns
+			to_pd_x = _outx;
+			to_pd_y = _outy;
+
+
+		}
+
+
+	/**
+	 * 2D decoder which uses either synapse handshaking, or just a delay.
+	 * Controlled by the "hs_en" (handshake_enable) config bit.
+	 * hs_en = 0 -> use delayed version.
+	 * hs_en = 1 -> use synapse handshaking.
+	 * Regardless of which version is used, the final ack going to the buffer
+	 * goes through the prog_delay block.
+	 * Thus, for the handshaking version to be used "correctly", 
+	 * dly_cfg should be set to all zeros.
+	 * ack_disable blocks the ack being returned to the buffer.
+	 * Is needed in case there are instabilities while we fiddle with delays.
+	 */
+	 // @TODO : think hard about the fact that the line end pullups are not placed manually,
+	 // and write argumentation about whether this is fine
+	export template<pint N>
+	defproc decoder_1d (awMx1of2<std::ceil_log2(N)> in; a1of1 out[N];
+	bool? reset_B; power supply) {
+
+
+	// Buffer to recieve concat address packet
+	buffer<std::ceil_log2(N)> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
+
+	// Decoder And tree
+	decoder_dualrail_refresh<std::ceil_log2(N),N> d_dr(.supply = supply);
+	(i:0..std::ceil_log2(N)-1:d_dr.in.d[i] = addr_buf.out.d.d[i];)
+	(i:0..N-1: d_dr.out[i] = out[i].r;)
+
+
+	// Validity 
+	vtree<std::ceil_log2(N)> vtree (.in = d_dr.final_refresh, .supply = supply);
+	vtree.out = addr_buf.out.v;
+
+
+	// ORtree from all output acks, back to the buffer ack.
+	// This is instead of the ack that came from the delayed validity trees,
+	// in decoder_2d_dly.
+	ortree<N>  _ortree(.supply = supply);
+	(i:N:
+		_ortree.in[i] = out[i].a;
+	)
+	_ortree.out = addr_buf.out.a;
+
+
+	}
+
+	export template<pint N, W>
+	defproc demux_qdi2bd_1d (awMx1of2<std::ceil_log2(N)+W> in; rbd<W> out[N];
+	bool? reset_B; power supply) {
+	
+	// Added by Paolo, to be checked
+	buffer<std::ceil_log2(N) + W> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
+	//stop added
+
+	sigbuf<N+1> data_t[W];
+
+	(i:0..W-1:
+	
+		data_t[i].in = addr_buf.out.d.d[std::ceil_log2(N) + i].t;
+		(j:0..N-1: 
+			data_t[i].out[j] = out[j].d.d[0];
+		)
+		data_t.supply = supply;
+	)
+
+
+
+	// Buffer to recieve concat address packet
+	buffer<std::ceil_log2(N)+W> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
+
+	// Decoder And tree
+	decoder_dualrail_refresh<std::ceil_log2(N),N> d_dr(.supply = supply);
+	(i:0..std::ceil_log2(N)-1:d_dr.in.d[i] = addr_buf.out.d.d[i];)
+	(i:0..N-1: d_dr.out[i] = out[i].r;)
+
+
+	// Validity 
+	vtree<std::ceil_log2(N)> vtree (.in = d_dr.final_refresh, .supply = supply);
+	vtree<W> vtree_data (.supply = supply);
+	(i:0..W-1: 
+		vtree_data.in[i].t = addr_buf.d.d[i+std::ceil_log2(N)].t;
+		vtree_data.in[i].f = data_t[i].out[N];
+	)
+	
+	A_2C_B_X1 valid_Cel(.c1 = vtree.out, .c2 = vtree_data.out, .y = addr_buf.out.v,
+		.vdd = supply.vdd, .vss = supply.vss);
+
+	// ORtree from all output acks, back to the buffer ack.
+	// This is instead of the ack that came from the delayed validity trees,
+	// in decoder_2d_dly.
+	ortree<N>  _ortree(.supply = supply);
+	(i:N:
+		_ortree.in[i] = out[i].a;
+	)
+	_ortree.out = addr_buf.out.a;
+
+
+	}
+
+
+
+	}
+
+}

@@ -1,0 +1,92 @@
+watchall
+
+set b.out.a 0
+set b.in.a 0
+set-qdi-channel-neutral "b.in" 5
+
+set b.dly_cfg[0] 1
+set b.dly_cfg[1] 1
+set b.dly_cfg[2] 1
+set b.dly_cfg[3] 1
+
+set Reset 0
+cycle
+
+system "echo '[] set Reset 1'"
+set Reset 1
+cycle
+
+system "echo '[] set Reset 0'"
+set Reset 0
+mode run
+cycle
+status X
+
+assert b.in.a 0
+assert b.out.r 0
+
+system "echo '[] Reset finished, setting data'"
+set-qdi-channel-valid "b.in" 5 22
+cycle
+assert b.out.r 1
+assert b.out.d[0] 0
+assert b.out.d[1] 1
+assert b.out.d[2] 1
+assert b.out.d[3] 0
+assert b.out.d[4] 1
+assert b.in.a 1
+
+system "echo '[] Removing input data'"
+set-qdi-channel-neutral "b.in" 5
+cycle
+assert b.out.r 1
+assert b.out.d[0] 0
+assert b.out.d[1] 1
+assert b.out.d[2] 1
+assert b.out.d[3] 0
+assert b.out.d[4] 1
+
+system "echo '[] Receiving out ack'"
+set b.out.a 1
+cycle
+assert b.out.r 0
+assert b.in.a 0
+
+system "echo '[] Out ack removed'"
+set b.out.a 0
+cycle
+
+
+
+system "echo '[] Again! Setting data'"
+set-qdi-channel-valid "b.in" 5 31
+cycle
+assert b.out.r 1
+assert b.out.d[0] 1
+assert b.out.d[1] 1
+assert b.out.d[2] 1
+assert b.out.d[3] 1
+assert b.out.d[4] 1
+assert b.in.a 1
+
+system "echo '[] Removing input data'"
+set-qdi-channel-neutral "b.in" 5
+cycle
+assert b.out.r 1
+assert b.out.d[0] 1
+assert b.out.d[1] 1
+assert b.out.d[2] 1
+assert b.out.d[3] 1
+assert b.out.d[4] 1
+
+system "echo '[] Receiving out ack'"
+set b.out.a 1
+cycle
+assert b.out.r 0
+assert b.in.a 0
+
+system "echo '[] Out ack removed'"
+set b.out.a 0
+cycle
+
+

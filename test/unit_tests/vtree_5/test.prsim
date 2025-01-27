@@ -1,0 +1,11 @@
+watchall
+system "echo '[0] starting test true high'"
+set-qdi-channel-neutral "t.in" 5
+cycle
+mode run
+assert t.out 0
+set-qdi-channel-valid "t.in" 5 3
+cycle
+mode run
+assert t.out 1
+system "echo '[1] cleaning input'"

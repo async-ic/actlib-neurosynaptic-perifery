@@ -1,0 +1,42 @@
+watchall
+
+system "echo '0'"
+
+set t.in  0
+set t.s[0] 1
+set t.s[1] 1
+set t.s[2] 1
+set t.s[3] 1
+
+cycle
+mode run
+
+# assert t.out 0
+
+system "echo '[] setting high'"
+set t.in  1
+cycle
+assert t.out 1
+
+system "echo '[] setting low'"
+set t.in  0
+cycle
+assert t.out 0
+
+system "echo '[] setting configs low'"
+set t.s[0] 0
+set t.s[1] 0
+set t.s[2] 0
+set t.s[3] 0
+cycle
+assert t.out 0
+
+system "echo '[] setting high'"
+set t.in  1
+cycle
+assert t.out 1
+
+system "echo '[] setting low'"
+set t.in  0
+cycle
+assert t.out 0
