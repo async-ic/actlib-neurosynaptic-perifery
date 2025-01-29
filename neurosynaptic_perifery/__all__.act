@@ -25,3 +25,6 @@
 import tmpl::neurosynaptic_perifery::cell_lib_std;
 import tmpl::neurosynaptic_perifery::cell_lib_async;
 import tmpl::neurosynaptic_perifery::primitives;
+import tmpl::neurosynaptic_perifery::treegates;
+import tmpl::neurosynaptic_perifery::interfaces;
+import tmpl::neurosynaptic_perifery::coders;

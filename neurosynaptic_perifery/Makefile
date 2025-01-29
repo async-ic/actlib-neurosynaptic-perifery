@@ -19,7 +19,7 @@
 #
 # -----------------------------------------------------------------------------
 
-TARGETACT=__all__.act cell_lib_std.act cell_lib_async.act primitives.act  
+TARGETACT=__all__.act cell_lib_std.act cell_lib_async.act cell_lib_std.v cell_lib_async.v primitives.act treegates.act registers.act interfaces.act coders.act 
 SUBDIRS=
 # template because its a template based appoach no syntesis so it would be wrong in syn
 TARGETACTSUBDIR=tmpl/neurosynaptic_perifery

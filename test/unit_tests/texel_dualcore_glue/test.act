@@ -28,8 +28,8 @@
 
 import "../../neurosynaptic_perifery/coders.act";
 import "../../neurosynaptic_perifery/primitives.act";
-import "../../neurosynaptic_perifery/chips.act";
-import "../../neurosynaptic_perifery/dummy.act";
+import "../../implementations/chips.act";
+import "../../implementations/dummy.act";
 
 import globals;
 import std::data;
