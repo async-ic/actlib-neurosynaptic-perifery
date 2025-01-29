@@ -1086,58 +1086,59 @@ defproc decoder_2d_hybrid (awMx1of2<NxC+NyC> in; bool! out_req_x[Nx], out_req_y[
 
 	}
 
-	export template<pint N, W>
-	defproc demux_qdi2bd_1d (awMx1of2<std::ceil_log2(N)+W> in; rbd<W> out[N];
-	bool? reset_B; power supply) {
+	// export template<pint N, W>
+	// defproc demux_qdi2bd_1d (awMx1of2<std::ceil_log2(N)+W> in; rbd<W> out[N];
+	// bool? reset_B; power supply) {
 	
-	// Added by Paolo, to be checked
-	buffer<std::ceil_log2(N) + W> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
-	//stop added
+	// // Added by Paolo, to be checked
+	// buffer<std::ceil_log2(N) + W> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
+	// //stop added
 
-	sigbuf<N+1> data_t[W];
+	// sigbuf<N+1> data_t[W];
 
-	(i:0..W-1:
+	// (i:0..W-1:
 	
-		data_t[i].in = addr_buf.out.d.d[std::ceil_log2(N) + i].t;
-		(j:0..N-1: 
-			data_t[i].out[j] = out[j].d.d[0];
-		)
-		data_t.supply = supply;
-	)
+	// 	data_t[i].in = addr_buf.out.d.d[std::ceil_log2(N) + i].t;
+	// 	(j:0..N-1: 
+	// 		data_t[i].out[j] = out[j].d[0];
+	// 		data_t[i].supply = supply;
+	// 	)
+		
+	// )
 
 
 
-	// Buffer to recieve concat address packet
-	buffer<std::ceil_log2(N)+W> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
+	// // Buffer to recieve concat address packet
+	// buffer<std::ceil_log2(N)+W> addr_buf(.in = in, .reset_B = reset_B, .supply = supply);
 
-	// Decoder And tree
-	decoder_dualrail_refresh<std::ceil_log2(N),N> d_dr(.supply = supply);
-	(i:0..std::ceil_log2(N)-1:d_dr.in.d[i] = addr_buf.out.d.d[i];)
-	(i:0..N-1: d_dr.out[i] = out[i].r;)
+	// // Decoder And tree
+	// decoder_dualrail_refresh<std::ceil_log2(N),N> d_dr(.supply = supply);
+	// (i:0..std::ceil_log2(N)-1:d_dr.in.d[i] = addr_buf.out.d.d[i];)
+	// (i:0..N-1: d_dr.out[i] = out[i].r;)
 
 
-	// Validity 
-	vtree<std::ceil_log2(N)> vtree (.in = d_dr.final_refresh, .supply = supply);
-	vtree<W> vtree_data (.supply = supply);
-	(i:0..W-1: 
-		vtree_data.in[i].t = addr_buf.d.d[i+std::ceil_log2(N)].t;
-		vtree_data.in[i].f = data_t[i].out[N];
-	)
+	// // Validity 
+	// vtree<std::ceil_log2(N)> vtree (.in = d_dr.final_refresh, .supply = supply);
+	// vtree<W> vtree_data (.supply = supply);
+	// (i:0..W-1: 
+	// 	vtree_data.in[i].t = addr_buf.d.d[i+std::ceil_log2(N)].t;
+	// 	vtree_data.in[i].f = data_t[i].out[N];
+	// )
 	
-	A_2C_B_X1 valid_Cel(.c1 = vtree.out, .c2 = vtree_data.out, .y = addr_buf.out.v,
-		.vdd = supply.vdd, .vss = supply.vss);
+	// A_2C_B_X1 valid_Cel(.c1 = vtree.out, .c2 = vtree_data.out, .y = addr_buf.out.v,
+	// 	.vdd = supply.vdd, .vss = supply.vss);
 
-	// ORtree from all output acks, back to the buffer ack.
-	// This is instead of the ack that came from the delayed validity trees,
-	// in decoder_2d_dly.
-	ortree<N>  _ortree(.supply = supply);
-	(i:N:
-		_ortree.in[i] = out[i].a;
-	)
-	_ortree.out = addr_buf.out.a;
+	// // ORtree from all output acks, back to the buffer ack.
+	// // This is instead of the ack that came from the delayed validity trees,
+	// // in decoder_2d_dly.
+	// ortree<N>  _ortree(.supply = supply);
+	// (i:N:
+	// 	_ortree.in[i] = out[i].a;
+	// )
+	// _ortree.out = addr_buf.out.a;
 
 
-	}
+	// }
 
 
 
