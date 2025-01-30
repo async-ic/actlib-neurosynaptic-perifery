@@ -22,6 +22,10 @@ if not os.path.exists(path):
     print(f"Error: File '{path}' not found")
     sys.exit(1)
 
+filename = os.path.splitext(os.path.basename(path))[0]
+filepath = os.path.dirname(path)
+filepath = filepath + os.sep if filepath else ''
+
 with open(path) as f:
     veri = f.read()
     
@@ -137,8 +141,7 @@ for m in registers:
     
     veri = veri.replace(m[0], 'wire ' + m[1] + ' ;')
     
-    
-with open("netlist_clean.v", 'w') as w:
+with open(filepath + filename + "_clean.v", 'w') as w:
     w.write(veri)
 
 

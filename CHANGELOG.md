@@ -16,4 +16,7 @@
  - unittests
 
 ### Changed
+ - fixed python module splitter where files could only be lower case
+ - python scripts now use input filename for the output folder/filebase
+
 ### Removed

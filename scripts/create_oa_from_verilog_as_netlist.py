@@ -22,19 +22,21 @@ if not os.path.exists(path):
     print(f"Error: File '{path}' not found")
     sys.exit(1)
 
+filename = os.path.splitext(os.path.basename(path))[0]
+
 with open(path) as f:
     veri = f.read()
 
 '''Pick out modules'''
 
-modules = re.findall(r'(?<=\n)(module ([a-z_0-9]*)[\([\w]*?[\s\S]*?endmodule)', veri)
+modules = re.findall(r'(?<=\n)(module ([A-Z_a-z_0-9]*)[\([\w]*?[\s\S]*?endmodule)', veri)
 
 
 tag = '-- Master.tag File, Rev:1.0 \nverilog.v'
 
 for i in modules:
     
-    path = 'oa/' + i[1] + '/netlist'
+    path = filename + '/' + i[1] + '/netlist'
     
     if glob.glob(path):
         shutil.rmtree(path)
