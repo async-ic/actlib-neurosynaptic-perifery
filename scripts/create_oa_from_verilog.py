@@ -17,8 +17,6 @@ if len(sys.argv) != 2:
 # Get file path from command line argument
 path = sys.argv[1]
 
-path = glob.glob(path)[0]
-
 # Check if file exists
 if not os.path.exists(path):
     print(f"Error: File '{path}' not found")
@@ -36,7 +34,7 @@ tag = '-- Master.tag File, Rev:1.0 \nverilog.v'
 
 for i in modules:
     
-    path = '/oa/' + i[1] + '/netlist'
+    path = 'oa/' + i[1] + '/netlist'
     
     if glob.glob(path):
         shutil.rmtree(path)

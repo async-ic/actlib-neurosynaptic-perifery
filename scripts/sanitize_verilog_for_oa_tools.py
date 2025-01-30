@@ -17,8 +17,6 @@ if len(sys.argv) != 2:
 # Get file path from command line argument
 path = sys.argv[1]
 
-path = glob.glob(path)[0]
-
 # Check if file exists
 if not os.path.exists(path):
     print(f"Error: File '{path}' not found")
