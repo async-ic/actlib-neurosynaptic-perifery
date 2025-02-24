@@ -28,8 +28,8 @@ for file in files:
 		open_folder = os.path.join(path, file)
 		folder_files = os.listdir(open_folder)
 
-		if 'netlist' in folder_files:
-			_include = '.include_verilog \"{}{}/netlist/verilog.v\"\n'.format(path, file)
+		if 'functional' in folder_files:
+			_include = '.include_verilog \"{}/{}/netlist/verilog.v\"\n'.format(path, file)
 			
 			with open('include.cdl', 'a+') as f:
 				f.write(_include)
