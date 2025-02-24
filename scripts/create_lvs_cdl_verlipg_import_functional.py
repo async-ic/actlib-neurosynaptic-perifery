@@ -29,7 +29,7 @@ for file in files:
 		folder_files = os.listdir(open_folder)
 
 		if 'functional' in folder_files:
-			_include = '.include_verilog \"{}/{}/netlist/verilog.v\"\n'.format(path, file)
+			_include = '.include_verilog \"{}/{}/functional/verilog.v\"\n'.format(path, file)
 			
 			with open('include.cdl', 'a+') as f:
 				f.write(_include)
