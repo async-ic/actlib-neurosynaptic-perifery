@@ -140,7 +140,19 @@ registers = re.findall(r'(reg (\S*)\W*;)', veri)
 for m in registers:
     
     veri = veri.replace(m[0], 'wire ' + m[1] + ' ;')
-    
+
+''' remove ISupply vss '''
+
+for str_to_remove in [
+    'Isupply_vss ,',
+    'input Isupply_vss ;',
+    'wire Isupply_vss ;',
+    '.vss(Isupply_vss ),',
+    '.Isupply_vss (Isupply_vss ),',
+    '.Isupply_vss (top.GND),',
+    ]:
+    veri = veri.replace(str_to_remove, '')
+
 with open(filepath + filename + "_clean.v", 'w') as w:
     w.write(veri)
 
